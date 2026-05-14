@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prisma Access Egress IPs</title>
+  <link rel="icon" type="image/png" href="/static/PANW_Square_Logo.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <img src="/static/prisma-access_RGB_logo_Lockup_Negative.png" alt="Prisma Access" class="header-logo">
+      <div class="header-logo-divider"></div>
+      <span style="font-size:0.9rem; color:var(--text-secondary); letter-spacing:-0.01em;">Egress IPs</span>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Query form -->
+  <div class="query-card">
+    <div class="query-card-title">Query Configuration</div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label" for="apiKey">API Key</label>
+        <div class="input-wrap">
+          <input class="form-input" id="apiKey" type="password" placeholder="Prisma Access API key" autocomplete="off">
+          <button class="input-eye" type="button" id="apiKeyToggle" onclick="toggleApiKey()" title="Show / hide key" aria-label="Toggle API key visibility">
+            <svg id="eyeOn" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg id="eyeOff" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="environment">Environment</label>
+        <select class="form-select" id="environment">
+          <option value="prod1">prod1</option>
+          <option value="prod6">prod6</option>
+          <option value="fedramp">fedramp</option>
+          <option value="lab">lab</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="modeSingle" onclick="setMode('single')">Single</button>
+          <button class="mode-btn" id="modeBatch" onclick="setMode('batch')">Batch (all)</button>
+        </div>
+      </div>
+
+      <div class="form-group" id="nodeTypeGroup">
+        <label class="form-label" for="nodeType">Node Type</label>
+        <select class="form-select" id="nodeType" onchange="onNodeTypeChange()">
+          <option value="gw">gw — Gateway (deployed)</option>
+          <option value="gw_all">gw_all — Gateway (all)</option>
+          <option value="gw_pre">gw_pre — Gateway (pre-allocated)</option>
+          <option value="pt">pt — Portal</option>
+          <option value="rbi">rbi — RBI</option>
+          <option value="rn">rn — Remote Network (deployed)</option>
+          <option value="rn_all">rn_all — Remote Network (all)</option>
+          <option value="swg">swg — SWG Proxy (deployed)</option>
+          <option value="swg_lb">swg_lb — SWG Load Balancer</option>
+          <option value="swg_all">swg_all — SWG Proxy (all)</option>
+          <option value="all">all — Composite (all)</option>
+          <option value="all_deployed">all_deployed — Composite (deployed)</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="locationGroup" style="display:none;">
+        <label class="form-label" for="location">Location <span style="color:var(--text-muted);font-weight:400;">(optional — leave blank to query all)</span></label>
+        <input class="form-input" id="location" type="text" placeholder="e.g. US West" autocomplete="off">
+      </div>
+    </div>
+
+    <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
+      <button class="btn btn-primary" id="queryBtn" onclick="runQuery()">Query</button>
+      <button class="btn btn-ghost" id="clearBtn" onclick="clearResults()" style="display:none;">Clear</button>
+    </div>
+  </div>
+
+  <!-- Status banner -->
+  <div class="status-banner" id="statusBanner">
+    <span class="spinner" id="statusSpinner" style="display:none;"></span>
+    <span id="statusMsg"></span>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsSection" style="display:none;">
+    <div class="results-header">
+      <span class="results-title" id="resultsTitle">Results</span>
+      <div class="results-actions">
+        <button class="btn btn-ghost" onclick="copyIPs()">Copy IPs</button>
+        <button class="btn btn-ghost" onclick="downloadCSV()">Download CSV</button>
+        <button class="btn btn-ghost" onclick="downloadJSON()">Download JSON</button>
+      </div>
+    </div>
+
+    <!-- Batch: node type tabs -->
+    <div class="node-tabs" id="nodeTabs" style="display:none;"></div>
+
+    <!-- IP table -->
+    <div class="results-table-wrap">
+      <table id="resultsTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span>Prisma Access Egress IP Utility</span>
+    <span id="footerTimestamp"></span>
+  </footer>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
