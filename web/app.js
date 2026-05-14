@@ -229,13 +229,77 @@ function copyIPs() {
 }
 
 function downloadCSV() {
-  const ips = collectCurrentIPRows();
-  const csv = ['Zone,IPAddress,Type', ...ips.map(r => `${csvCell(r.zone)},${csvCell(r.ip)},${csvCell(r.type)}`)].join('\n');
-  download('egress-ips.csv', csv, 'text/csv');
+  const isRNSingle = currentMode === 'single' && lastResponse?.rn_site_details?.length;
+  const isRNBatch  = currentMode === 'batch'
+                     && (activeBatchKey === 'rn' || activeBatchKey === 'rn_all')
+                     && lastResponse?.rn_site_details?.[activeBatchKey]?.length;
+
+  if (isRNSingle || isRNBatch) {
+    const details  = isRNSingle
+      ? lastResponse.rn_site_details
+      : lastResponse.rn_site_details[activeBatchKey];
+    const nodeType = isRNSingle ? (lastResponse.node_type || 'rn') : activeBatchKey;
+    const rows     = details.map(d =>
+      [d.zone, d.address, nodeType, d.node_name, (d.sites || []).join('; ')].map(csvCell).join(',')
+    );
+    download('egress-ips.csv', ['Zone,IPAddress,Type,Node,Sites', ...rows].join('\n'), 'text/csv');
+  } else {
+    const rows = collectCurrentIPRows();
+    const csv  = ['Zone,IPAddress,Type', ...rows.map(r => `${csvCell(r.zone)},${csvCell(r.ip)},${csvCell(r.type)}`)].join('\n');
+    download('egress-ips.csv', csv, 'text/csv');
+  }
 }
 
 function downloadJSON() {
   download('egress-ips.json', JSON.stringify(lastResponse, null, 2), 'application/json');
+}
+
+function downloadTXT() {
+  if (!lastResponse) return;
+
+  const lines = [];
+  lines.push(`# ${document.getElementById('resultsTitle').textContent}`);
+  lines.push(`# Generated: ${new Date().toLocaleString()}`);
+  lines.push('#');
+
+  if (currentMode === 'batch') {
+    const key = activeBatchKey;
+    const data = key === 'all' ? lastResponse.all
+               : key === 'all_deployed' ? lastResponse.all_deployed
+               : lastResponse.results[key];
+    appendZoneTXT(lines, data || []);
+  } else if (lastResponse.rn_site_details?.length) {
+    appendRNTXT(lines, lastResponse.rn_site_details);
+  } else {
+    appendZoneTXT(lines, lastResponse.data || []);
+  }
+
+  download('egress-ips.txt', lines.join('\n'), 'text/plain');
+}
+
+function appendZoneTXT(lines, zoneData) {
+  for (const zone of zoneData) {
+    if (!zone.addresses.length) continue;
+    lines.push(`# ${zone.zone}`);
+    for (const addr of zone.addresses) lines.push(addr);
+    lines.push('#');
+  }
+}
+
+function appendRNTXT(lines, siteDetails) {
+  const byZone = {};
+  for (const d of siteDetails) {
+    (byZone[d.zone] ||= []).push(d);
+  }
+  for (const [zone, details] of Object.entries(byZone)) {
+    lines.push(`# ${zone}`);
+    for (const d of details) {
+      const sites = d.sites?.length ? ` — ${d.sites.join(', ')}` : '';
+      lines.push(`# ${d.node_name}${sites}`);
+      lines.push(d.address);
+    }
+    lines.push('#');
+  }
 }
 
 function collectCurrentIPs() {
