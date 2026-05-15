@@ -10,6 +10,7 @@ API_URLS: dict[str, str] = {
     "lab":     "https://api.lab.datapath.prismaaccess.com/getPrismaAccessIP/v2",
     "prod1":   "https://api.prod.datapath.prismaaccess.com/getPrismaAccessIP/v2",
     "prod6":   "https://api.prod6.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "prod8":   "https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2",
 }
 
 ENVIRONMENTS = list(API_URLS.keys())
