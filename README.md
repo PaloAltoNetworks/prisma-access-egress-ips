@@ -1,5 +1,7 @@
 # Prisma Access Egress IP Utility
 
+[![license](https://img.shields.io/badge/License-PANW_PS-F04E23?logo=paloaltonetworks&logoSize=auto)](./LICENSE.md)
+
 A web-based utility for querying Prisma Access egress IPs. Runs as a single Docker container — users provide their API key in the browser; no credentials are stored server-side.
 
 ## Architecture
