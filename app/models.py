@@ -14,7 +14,7 @@ _VALID_LOCATION = re.compile(r'^[A-Za-z0-9\s\-()\,]{1,100}$')
 
 # --- Shared request base ---
 class EnvironmentMixin(BaseModel):
-    environment: Literal["fedramp", "lab", "prod1", "prod6", "prod8"]
+    environment: Literal["fedramp", "lab", "prod1", "prod4", "prod6", "prod8"]
 
 
 # --- IP query requests ---
