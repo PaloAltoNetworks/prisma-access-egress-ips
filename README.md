@@ -6,7 +6,7 @@ A web-based utility for querying Prisma Access egress IPs. Runs as a single Dock
 
 ## Architecture
 
-```
+```text
 Browser (static frontend)
   └─ POST /api/ips/query  { api_key, environment, node_type }
        ▼
@@ -21,7 +21,7 @@ The worker is a thin authenticated proxy. Tokens are passed per-request and neve
 ## Running
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
 Open `http://localhost:8000`.
@@ -29,7 +29,7 @@ Open `http://localhost:8000`.
 ## API Endpoints
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | `POST` | `/api/ips/query` | Single node type query |
 | `POST` | `/api/ips/batch` | All node types + composites |
 | `POST` | `/api/ips/pre-allocate` | Pre-allocate Mobile User IPs |
@@ -41,7 +41,7 @@ Open `http://localhost:8000`.
 ## Node Types
 
 | Key | Description |
-|-----|-------------|
+| ----- | ------------- |
 | `gw` | GlobalProtect Gateway (deployed) |
 | `gw_all` | GlobalProtect Gateway (all) |
 | `gw_pre` | Gateway pre-allocated IPs |
@@ -60,15 +60,17 @@ Note: `swg`, `swg_all`, and `gw_pre` are exclusive lists — overlapping IPs fro
 ## Environments
 
 | Key | Endpoint |
-|-----|----------|
+| ----- | ---------- |
 | `prod1` | `api.prod.datapath.prismaaccess.com` |
+| `prod4` | `api.prod4.datapath.prismaaccess.com` |
 | `prod6` | `api.prod6.datapath.prismaaccess.com` |
+| `prod8` | `api.prod8.datapath.prismaaccess.com` |
 | `fedramp` | `api.fed.prismaaccess.com` |
 | `lab` | `api.lab.datapath.prismaaccess.com` |
 
 ## Project Structure
 
-```
+```text
 .
 ├── Dockerfile
 ├── docker-compose.yml
@@ -94,9 +96,11 @@ Note: `swg`, `swg_all`, and `gw_pre` are exclusive lists — overlapping IPs fro
 
 - Base image: `python:3-alpine` (floating tag — tracks latest Python 3.x patch)
 - Dependencies managed with `uv`; to generate a lockfile without touching the host:
+
   ```bash
   docker run --rm -v $(pwd):/app -w /app python:3-alpine \
     sh -c "pip install uv && uv lock"
   ```
+
 - The OpenAPI docs at `/api/docs` are useful for testing individual endpoints directly
 - Ported from CLI tool `pa-ips.py` (v5.1); file I/O and argparse removed, all output returned as JSON
