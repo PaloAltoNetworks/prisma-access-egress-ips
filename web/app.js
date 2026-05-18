@@ -342,7 +342,10 @@ function setLoading(on, msg) {
     document.getElementById('statusSpinner').style.display = '';
     document.getElementById('statusMsg').textContent = msg || 'Loading…';
   } else {
-    hideBanner();
+    const banner = document.getElementById('statusBanner');
+    if (!banner.classList.contains('error')) {
+      hideBanner();
+    }
   }
 }
 
