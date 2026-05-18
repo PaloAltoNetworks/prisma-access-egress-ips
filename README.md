@@ -2,7 +2,7 @@
 
 [![license](https://img.shields.io/badge/License-PANW_PS-F04E23?logo=paloaltonetworks&logoSize=auto)](./LICENSE.md)
 [![Build](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml/badge.svg)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml)
-[![image](https://ghcr-badge.egpl.dev/paloaltonetworks/prisma-access-egress-ips/latest_tag?trim=major&label=ghcr)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips)
+[![ghcr](https://img.shields.io/badge/ghcr.io-latest-blue?logo=docker&logoColor=white)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips)
 
 A web-based utility for querying Prisma Access egress IPs. Runs as a single Docker container — users provide their API key in the browser; no credentials are stored server-side.
 
