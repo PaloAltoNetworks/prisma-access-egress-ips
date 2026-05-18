@@ -1,0 +1,16 @@
+# Use this file to run the utility using the pre-built image from GHCR.
+# No local build or clone required — Docker is the only dependency.
+#
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+# Open http://localhost:8000 once the container starts.
+# To pin to a specific release instead of latest, replace the image tag with
+# a SHA digest from https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips
+
+services:
+  app:
+    image: ghcr.io/paloaltonetworks/prisma-access-egress-ips:latest
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    pull_policy: always

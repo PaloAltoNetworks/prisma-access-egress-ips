@@ -1,6 +1,8 @@
 # Prisma Access Egress IP Utility
 
 [![license](https://img.shields.io/badge/License-PANW_PS-F04E23?logo=paloaltonetworks&logoSize=auto)](./LICENSE.md)
+[![Build](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml/badge.svg)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml)
+[![image](https://ghcr-badge.egpl.dev/paloaltonetworks/prisma-access-egress-ips/latest_tag?trim=major&label=ghcr)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips)
 
 A web-based utility for querying Prisma Access egress IPs. Runs as a single Docker container — users provide their API key in the browser; no credentials are stored server-side.
 
@@ -19,6 +21,18 @@ Browser (static frontend)
 The worker is a thin authenticated proxy. Tokens are passed per-request and never persisted.
 
 ## Running
+
+### Hosted image (recommended)
+
+No clone required. Copy [`docker-compose.ghcr.yml`](./docker-compose.ghcr.yml) and run:
+
+```bash
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+The image is published to GHCR and rebuilt weekly to pick up base image security patches. To pin to a specific release, replace `latest` with a SHA digest from the [package page](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips).
+
+### Build from source
 
 ```bash
 docker compose up --build -d
@@ -67,6 +81,8 @@ Note: `swg`, `swg_all`, and `gw_pre` are exclusive lists — overlapping IPs fro
 | `prod8` | `api.prod8.datapath.prismaaccess.com` |
 | `fedramp` | `api.fed.prismaaccess.com` |
 | `lab` | `api.lab.datapath.prismaaccess.com` |
+
+If you select the wrong environment, the app detects the `401` and automatically retries against the remaining environments in parallel, then updates the selector to show which one accepted your key.
 
 ## Project Structure
 
