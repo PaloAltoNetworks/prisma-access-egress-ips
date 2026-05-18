@@ -53,15 +53,18 @@ async function runQuery() {
       if (isPreAllocate) {
         const res = await apiFetch('/api/ips/pre-allocate', { api_key: apiKey, environment, location });
         lastResponse = res;
+        checkEnvironmentUpdate(res);
         renderPreAllocate(res);
       } else {
         const res = await apiFetch('/api/ips/query', { api_key: apiKey, environment, node_type: nodeType });
         lastResponse = res;
+        checkEnvironmentUpdate(res);
         renderSingle(res);
       }
     } else {
       const res = await apiFetch('/api/ips/batch', { api_key: apiKey, environment });
       lastResponse = res;
+      checkEnvironmentUpdate(res);
       renderBatch(res);
     }
     document.getElementById('footerTimestamp').textContent = new Date().toLocaleString();
@@ -370,6 +373,15 @@ function esc(str) {
 function csvCell(val) {
   const s = String(val ?? '');
   return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// ── Environment auto-correct ───────────────────────────────────────────
+function checkEnvironmentUpdate(res) {
+  const select = document.getElementById('environment');
+  if (res.environment && res.environment !== select.value) {
+    select.value = res.environment;
+    flashMsg(`Environment auto-corrected to ${res.environment}`);
+  }
 }
 
 // ── API key visibility toggle ──────────────────────────────────────────

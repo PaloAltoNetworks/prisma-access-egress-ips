@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from app.config import (
     API_TIMEOUT_SECONDS,
     API_URLS,
+    ENVIRONMENTS,
     LOCATIONS_API_URL,
     MIN_REQUEST_INTERVAL,
     NODE_PAYLOADS,
@@ -163,3 +164,43 @@ async def fetch_bearer_token(client_id: str, client_secret: str, tsg_id: str) ->
         )
     except httpx.RequestError as exc:
         raise HTTPException(status_code=502, detail=f"Could not reach OAuth endpoint: {exc}")
+
+
+# --- Environment auto-detection ---
+
+async def probe_environment(environment: str, api_key: str) -> bool | None:
+    """
+    Lightweight auth probe for one environment.
+    Returns True if the key is accepted (any non-401 HTTP response),
+    False on 401, None if unreachable.
+    """
+    url = API_URLS[environment]
+    payload = NODE_PAYLOADS["gw"]
+    headers = {"header-api-key": api_key, "Content-Type": "application/json"}
+    verify = True
+    for _ in range(2):
+        try:
+            async with httpx.AsyncClient(verify=verify, timeout=10) as client:
+                response = await client.post(url, headers=headers, json=payload)
+            return response.status_code != 401
+        except httpx.ConnectError:
+            if verify:
+                verify = False
+            else:
+                return None
+        except httpx.RequestError:
+            return None
+    return None
+
+
+async def find_working_environment(api_key: str, exclude: Optional[str] = None) -> Optional[str]:
+    """
+    Probe all environments (except `exclude`) in parallel.
+    Returns the name of the first environment that accepts the API key, or None.
+    """
+    envs = [e for e in ENVIRONMENTS if e != exclude]
+    results = await asyncio.gather(*[probe_environment(e, api_key) for e in envs])
+    for env, ok in zip(envs, results):
+        if ok is True:
+            return env
+    return None
