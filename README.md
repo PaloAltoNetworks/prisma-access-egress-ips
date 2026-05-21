@@ -4,72 +4,65 @@
 [![Build](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml/badge.svg)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml)
 [![ghcr](https://img.shields.io/badge/ghcr.io-latest-blue?logo=docker&logoColor=white)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips)
 
-A web-based utility for querying Prisma Access egress IPs. Runs as a single Docker container — users provide their API key in the browser; no credentials are stored server-side.
+A browser-based tool for looking up Prisma Access egress IP addresses. Runs as a single Docker container — enter your API key in the browser, select what you need, and export the results as CSV, JSON, or plain text. No credentials are stored server-side.
 
-## Architecture
+## Prerequisites
 
-```text
-Browser (static frontend)
-  └─ POST /api/ips/query  { api_key, environment, node_type }
-       ▼
-  FastAPI worker (Python + httpx)
-       └─ POST https://api.{env}.datapath.prismaaccess.com/getPrismaAccessIP/v2
-              ▼
-          Prisma Access Public API
-```
+- [Docker](https://docs.docker.com/get-docker/) (includes Docker Compose)
 
-The worker is a thin authenticated proxy. Tokens are passed per-request and never persisted.
+## Quick Start
 
-## Running
+### Option A — Hosted image (recommended)
 
-### Hosted image (recommended)
-
-No clone required. Copy [`docker-compose.ghcr.yml`](./docker-compose.ghcr.yml) and run:
+No clone required. Download the compose file and start the container:
 
 ```bash
-docker compose -f docker-compose.ghcr.yml up -d
+curl -fsSLO https://raw.githubusercontent.com/PaloAltoNetworks/prisma-access-egress-ips/main/compose.yml
+docker compose up -d
 ```
 
-The image is published to GHCR and rebuilt weekly to pick up base image security patches. To pin to a specific release, replace `latest` with a SHA digest from the [package page](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips).
+The image is published to the GitHub Container Registry and rebuilt weekly to pick up base-image security patches. To pin a specific release, replace `latest` with a SHA digest from the [package page](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips).
 
-### Build from source
+### Option B — Build from source
 
 ```bash
-docker compose up --build -d
+git clone https://github.com/PaloAltoNetworks/prisma-access-egress-ips.git
+cd prisma-access-egress-ips
+docker compose -f compose.build.yml up --build -d
 ```
 
-Open `http://localhost:8000`.
+Once running, open **<http://localhost:8000>**.
 
-## API Endpoints
+## Getting Your API Key
 
-| Method | Path | Description |
-| -------- | ------ | ------------- |
-| `POST` | `/api/ips/query` | Single node type query |
-| `POST` | `/api/ips/batch` | All node types + composites |
-| `POST` | `/api/ips/pre-allocate` | Pre-allocate Mobile User IPs |
-| `GET`  | `/api/locations` | List Prisma Access locations (Bearer token) |
-| `POST` | `/api/auth/token` | Exchange SASE client credentials for bearer token |
-| `GET`  | `/api/docs` | Interactive OpenAPI docs |
-| `GET`  | `/health` | Health check |
+You need an **Egress IP API key** from your Prisma Access tenant. The steps depend on your management platform:
 
-## Node Types
+**Panorama managed**
 
-| Key | Description |
-| ----- | ------------- |
-| `gw` | GlobalProtect Gateway (deployed) |
-| `gw_all` | GlobalProtect Gateway (all) |
-| `gw_pre` | Gateway pre-allocated IPs |
-| `pt` | GlobalProtect Portal (deployed) |
-| `rbi` | Remote Browser Isolation |
-| `rn` | Remote Network (deployed) |
-| `rn_all` | Remote Network (all) |
-| `swg` | SWG Proxy (deployed, exclusive of LB IPs) |
-| `swg_lb` | SWG Network Load Balancer |
-| `swg_all` | SWG Proxy (all, exclusive of LB IPs) |
-| `all` | Composite — all types, all locations |
-| `all_deployed` | Composite — all types, deployed only |
+Panorama tab > Cloud Services Plugin > Configuration > Service Setup > **Egress IP API**
 
-Note: `swg`, `swg_all`, and `gw_pre` are exclusive lists — overlapping IPs from `swg_lb` / `gw_all` are subtracted server-side, matching the behaviour of the original CLI tool.
+**Strata Cloud Manager (SCM)**
+
+Configuration > NGFW & Prisma Access > Prisma Access > Setup > **Egress IP API**
+
+Copy the API key and paste it into the tool's **API Key** field.
+
+## Using the Tool
+
+1. **Paste your API key** into the API Key field (click the eye icon to verify it).
+2. **Select your environment** from the dropdown (see [Environments](#environments) if unsure).
+3. **Choose a mode:**
+   - **Single** — query one node type at a time.
+   - **Batch (all)** — query all node types at once. Optionally filter by location.
+4. **Pick a node type** (Single mode) or leave the default (Batch mode).
+5. **Click Query.**
+
+Results appear in a table. From there you can:
+
+- **Copy IPs** to clipboard
+- **Download** as CSV, JSON, or TXT
+
+> **Wrong environment?** If the API returns a `401`, the tool automatically retries against the other environments in parallel and updates the dropdown to whichever one accepted your key.
 
 ## Environments
 
@@ -82,41 +75,62 @@ Note: `swg`, `swg_all`, and `gw_pre` are exclusive lists — overlapping IPs fro
 | `fedramp` | `api.fed.prismaaccess.com` |
 | `lab` | `api.lab.datapath.prismaaccess.com` |
 
-If you select the wrong environment, the app detects the `401` and automatically retries against the remaining environments in parallel, then updates the selector to show which one accepted your key.
+If you don't know which environment your tenant is on, just pick any — the auto-retry will find the right one.
 
-## Project Structure
+## Node Types
 
-```text
-.
-├── Dockerfile
-├── docker-compose.yml
-├── pyproject.toml
-├── app/
-│   ├── main.py               # FastAPI app, static file serving
-│   ├── config.py             # API URLs, node type payloads, constants
-│   ├── models.py             # Pydantic request/response models
-│   ├── routers/
-│   │   ├── ips.py            # /api/ips/* endpoints
-│   │   ├── locations.py      # /api/locations
-│   │   └── auth.py           # /api/auth/token
-│   └── services/
-│       ├── prisma_client.py  # Async Prisma Access API client (httpx)
-│       └── ip_processor.py   # Business logic: normalize, subtract, merge, batch
-└── web/
-    ├── index.html
-    ├── app.js
-    └── style.css
-```
+| Key | Description | Notes |
+| ----- | ------------- | ------- |
+| `gw` | GlobalProtect Gateway (deployed) | Currently active gateways |
+| `gw_all` | GlobalProtect Gateway (all) | Includes provisioned-but-not-yet-deployed |
+| `gw_pre` | Gateway pre-allocated IPs | Exclusive — overlapping IPs from `gw_all` are subtracted |
+| `pt` | GlobalProtect Portal (deployed) | |
+| `rbi` | Remote Browser Isolation | |
+| `rn` | Remote Network (deployed) | Currently active remote networks |
+| `rn_all` | Remote Network (all) | Includes provisioned-but-not-yet-deployed |
+| `swg` | SWG Proxy (deployed) | Exclusive — overlapping IPs from `swg_lb` are subtracted |
+| `swg_lb` | SWG Network Load Balancer | |
+| `swg_all` | SWG Proxy (all) | Exclusive — overlapping IPs from `swg_lb` are subtracted |
+| `all` | Composite — every type, all locations | Batch query across everything |
+| `all_deployed` | Composite — every type, deployed only | Batch query, active infrastructure only |
 
-## Development Notes
+**Deployed vs. All:** "Deployed" returns IPs for infrastructure that is currently active. "All" also includes IPs that have been provisioned but are not yet in service.
 
-- Base image: `python:3-alpine` (floating tag — tracks latest Python 3.x patch)
-- Dependencies managed with `uv`; to generate a lockfile without touching the host:
+**Exclusive lists:** `swg`, `swg_all`, and `gw_pre` subtract overlapping IPs from related types (`swg_lb` and `gw_all` respectively) so you get a clean, non-overlapping set.
 
-  ```bash
-  docker run --rm -v $(pwd):/app -w /app python:3-alpine \
-    sh -c "pip install uv && uv lock"
-  ```
+## API Reference
 
-- The OpenAPI docs at `/api/docs` are useful for testing individual endpoints directly
-- Ported from CLI tool `pa-ips.py` (v5.1); file I/O and argparse removed, all output returned as JSON
+The tool also exposes a REST API if you prefer to query programmatically.
+
+| Method | Path | Description |
+| -------- | ------ | ------------- |
+| `POST` | `/api/ips/query` | Single node type query |
+| `POST` | `/api/ips/batch` | All node types + composites |
+| `POST` | `/api/ips/pre-allocate` | Pre-allocate Mobile User IPs |
+| `GET`  | `/api/locations` | List Prisma Access locations (Bearer token) |
+| `POST` | `/api/auth/token` | Exchange SASE client credentials for bearer token |
+| `GET`  | `/health` | Health check |
+
+Interactive API documentation is available at **<http://localhost:8000/api/docs>** once the container is running.
+
+## Troubleshooting
+
+**401 Unauthorized on every environment**
+Your API key may be expired or invalid. Regenerate it from the Egress IP API page in Panorama or SCM.
+
+**Container starts but the page won't load**
+Check that port 8000 isn't already in use. To use a different port, edit the `ports` mapping in the compose file (e.g., `9000:8000` to use port 9000).
+
+**Queries hang or time out**
+The container needs outbound HTTPS access to `*.datapath.prismaaccess.com` (and `api.fed.prismaaccess.com` for FedRAMP). Ensure your firewall or proxy allows this traffic.
+
+**Empty results for a node type**
+Not all tenants have every service deployed. If a node type returns no results, that service may not be provisioned in your environment.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for architecture details, project structure, and local development setup.
+
+## License
+
+See [LICENSE.md](./LICENSE.md).
