@@ -44,7 +44,7 @@ CLAUDE.md
 *.swo
 
 # Docker
-docker-compose.override.yml
+compose.override.yml
 
 # Output / scratch
 output_data/
