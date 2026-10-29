@@ -407,6 +407,19 @@ td.type-cell {
   font-size: 0.72rem;
   color: var(--text-muted);
 }
+td.node-cell {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+td.empty-cell {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 32px;
+}
+.site-none {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
 
 /* ── Empty state ─────────────────────────────────────────────────────── */
 .empty-state {

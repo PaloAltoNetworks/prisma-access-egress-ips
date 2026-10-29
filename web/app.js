@@ -231,7 +231,7 @@ function renderPreAllocate(res) {
 function renderBatch(res) {
   // Build tab list: individual node types + composites
   const tabs = document.getElementById('nodeTabs');
-  tabs.innerHTML = '';
+  tabs.replaceChildren();
   tabs.style.display = 'flex';
 
   const allKeys = [...Object.keys(res.results), 'all', 'all_deployed'];
@@ -245,7 +245,7 @@ function renderBatch(res) {
     const btn = document.createElement('button');
     btn.className = 'node-tab' + (i === 0 ? ' active' : '');
     btn.dataset.key = key;
-    btn.innerHTML = `${key}<span class="count">${count}</span>`;
+    btn.append(key, el('span', { className: 'count', text: String(count) }));
     btn.onclick = () => selectBatchTab(key, res);
     tabs.appendChild(btn);
   });
@@ -280,53 +280,61 @@ function selectBatchTab(key, res) {
   }
 }
 
+// ── DOM helpers ────────────────────────────────────────────────────────
+// API data only ever reaches the page through textContent, so it can never become markup.
+function el(tag, { text, ...props } = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  if (text !== undefined) node.textContent = text;
+  node.append(...children);
+  return node;
+}
+
+function setTableHead(...labels) {
+  document.getElementById('tableHead').replaceChildren(el('tr', {}, ...labels.map(text => el('th', { text }))));
+}
+
+function setTableRows(rows, columns, emptyMessage) {
+  const body = document.getElementById('tableBody');
+  if (!rows.length) {
+    body.replaceChildren(el('tr', {}, el('td', { className: 'empty-cell', colSpan: columns, text: emptyMessage })));
+    return;
+  }
+  // A fragment avoids spreading thousands of rows into a single call
+  const fragment = document.createDocumentFragment();
+  for (const row of rows) fragment.append(row);
+  body.replaceChildren(fragment);
+}
+
 // ── Table renderers ────────────────────────────────────────────────────
 function renderIPTable(zoneData, nodeType) {
-  document.getElementById('tableHead').innerHTML = `
-    <tr>
-      <th>Zone</th>
-      <th>IP Address</th>
-      <th>Type</th>
-    </tr>`;
-
+  setTableHead('Zone', 'IP Address', 'Type');
   const rows = [];
   for (const zone of zoneData) {
     for (const addr of zone.addresses) {
-      rows.push(`<tr>
-        <td class="zone-cell">${esc(zone.zone)}</td>
-        <td class="ip-cell">${esc(addr)}</td>
-        <td class="type-cell">${esc(nodeType)}</td>
-      </tr>`);
+      rows.push(el('tr', {},
+        el('td', { className: 'zone-cell', text: zone.zone }),
+        el('td', { className: 'ip-cell', text: addr }),
+        el('td', { className: 'type-cell', text: nodeType }),
+      ));
     }
   }
-
-  document.getElementById('tableBody').innerHTML =
-    rows.length ? rows.join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:32px;">No IPs returned</td></tr>';
+  setTableRows(rows, 3, 'No IPs returned');
 }
 
 function renderRNTable(siteDetails) {
-  document.getElementById('tableHead').innerHTML = `
-    <tr>
-      <th>Zone</th>
-      <th>IP Address</th>
-      <th>Node</th>
-      <th>Sites</th>
-    </tr>`;
-
-  const rows = siteDetails.map(d => `<tr>
-    <td class="zone-cell">${esc(d.zone)}</td>
-    <td class="ip-cell">${esc(d.address)}</td>
-    <td class="type-cell" style="font-family:var(--font-mono);font-size:0.75rem;">${esc(d.node_name)}</td>
-    <td>${renderSiteChips(d.sites)}</td>
-  </tr>`);
-
-  document.getElementById('tableBody').innerHTML =
-    rows.length ? rows.join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:32px;">No data</td></tr>';
+  setTableHead('Zone', 'IP Address', 'Node', 'Sites');
+  const rows = siteDetails.map(d => el('tr', {},
+    el('td', { className: 'zone-cell', text: d.zone }),
+    el('td', { className: 'ip-cell', text: d.address }),
+    el('td', { className: 'type-cell node-cell', text: d.node_name }),
+    el('td', {}, renderSiteChips(d.sites)),
+  ));
+  setTableRows(rows, 4, 'No data');
 }
 
 function renderSiteChips(sites) {
-  if (!sites?.length) return '<span style="color:var(--text-muted);font-size:0.72rem;">—</span>';
-  return `<div class="site-list">${sites.map(s => `<span class="site-chip">${esc(s)}</span>`).join('')}</div>`;
+  if (!sites?.length) return el('span', { className: 'site-none', text: '—' });
+  return el('div', { className: 'site-list' }, ...sites.map(s => el('span', { className: 'site-chip', text: s })));
 }
 
 // ── Export ─────────────────────────────────────────────────────────────
@@ -474,10 +482,6 @@ function flashMsg(msg) {
   document.getElementById('statusSpinner').style.display = 'none';
   document.getElementById('statusMsg').textContent = msg;
   setTimeout(hideBanner, 2500);
-}
-
-function esc(str) {
-  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function csvCell(val) {
