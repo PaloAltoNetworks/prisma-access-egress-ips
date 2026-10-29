@@ -5,8 +5,8 @@
 ## Context
 
 The image had been built on the floating `python:3-alpine` tag: Python 3.14 at the time, running as
-root. The maintainers' engineering standards allow two runtimes: distroless if `requires-python` can drop to 3.13, or a
-digest-pinned, hardened `python:3.14-alpine`. Nothing in the code needs 3.14.
+root. The maintainers' engineering standards allow two runtimes: distroless if `requires-python`
+can drop to 3.13, or a digest-pinned, hardened `python:3.14-alpine`. Nothing in the code needs 3.14.
 
 ## Decision
 
