@@ -10,7 +10,10 @@ router = APIRouter(prefix="/api/locations", tags=["locations"])
 
 
 @router.get("")
-async def get_locations(authorization: str = Header(..., alias="Authorization")) -> list[dict]:
+async def get_locations(
+    authorization: str = Header(..., alias="Authorization"),
+    skip_tls_verify: bool = False,
+) -> list[dict]:
     """
     Fetch all Prisma Access locations.
     Expects: Authorization: Bearer <token>
@@ -19,4 +22,4 @@ async def get_locations(authorization: str = Header(..., alias="Authorization"))
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Authorization header must use Bearer scheme")
     token = authorization[7:].strip()
-    return await fetch_locations(token)
+    return await fetch_locations(token, skip_tls_verify)

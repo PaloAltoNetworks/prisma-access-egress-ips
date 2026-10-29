@@ -21,6 +21,13 @@
 
 <div class="page">
 
+  <!-- Environments skipped during auto-detection because their certificate couldn't be verified -->
+  <div class="tls-failures" id="tlsFailures" style="display:none;">
+    <div class="tls-failures-title">Certificate verification failed for some environments</div>
+    <p class="tls-failures-text">These were skipped while finding the environment for your API key.</p>
+    <ul class="tls-failures-list" id="tlsFailuresList"></ul>
+  </div>
+
   <!-- Query form -->
   <div class="query-card">
     <div class="query-card-title">Query Configuration</div>
@@ -29,7 +36,9 @@
       <div class="form-group">
         <label class="form-label" for="apiKey">API Key</label>
         <div class="input-wrap">
-          <input class="form-input" id="apiKey" type="password" placeholder="Prisma Access API key" autocomplete="off">
+          <!-- An API key, not a login: opt out of password managers (1Password, LastPass, Bitwarden, Dashlane) -->
+          <input class="form-input" id="apiKey" type="password" placeholder="Prisma Access API key" autocomplete="off"
+                 data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
           <button class="input-eye" type="button" id="apiKeyToggle" onclick="toggleApiKey()" title="Show / hide key" aria-label="Toggle API key visibility">
             <svg id="eyeOn" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg id="eyeOff" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -84,6 +93,10 @@
     <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
       <button class="btn btn-primary" id="queryBtn" onclick="runQuery()">Query</button>
       <button class="btn btn-ghost" id="clearBtn" onclick="clearResults()" style="display:none;">Clear</button>
+      <div class="tls-session-notice" id="tlsSessionNotice" style="display:none;">
+        <span>Certificate verification is off for this session.</span>
+        <button class="link-btn" type="button" onclick="setSkipTlsForSession(false)">Turn it back on</button>
+      </div>
     </div>
   </div>
 
@@ -123,6 +136,43 @@
   </footer>
 
 </div>
+
+<!-- Shown when an upstream certificate can't be verified; filled in by app.js -->
+<dialog class="tls-dialog" id="tlsDialog" aria-labelledby="tlsDialogTitle">
+  <form method="dialog">
+    <div class="tls-dialog-title" id="tlsDialogTitle">Certificate verification failed</div>
+    <p id="tlsDialogMessage"></p>
+    <dl class="tls-dialog-facts">
+      <dt>Host</dt><dd id="tlsDialogHost"></dd>
+      <dt>Reason</dt><dd id="tlsDialogReason"></dd>
+      <dt>Issued to</dt><dd id="tlsDialogSubject"></dd>
+      <dt>Valid for</dt><dd id="tlsDialogAltNames"></dd>
+      <dt>Validity</dt><dd id="tlsDialogValidity"></dd>
+      <dt>SHA-256</dt><dd id="tlsDialogFingerprint"></dd>
+    </dl>
+    <div id="tlsDialogChainSection">
+      <div class="tls-dialog-subtitle">Certificate chain presented</div>
+      <ol class="tls-dialog-chain" id="tlsDialogChain"></ol>
+    </div>
+    <p class="tls-dialog-note" id="tlsDialogNoDetails">Certificate details could not be retrieved.</p>
+    <p class="tls-dialog-note">
+      Check where the chain ends. If it's your organization's CA, your network decrypts TLS traffic:
+      add that CA to the container instead (see the
+      <a href="https://github.com/PaloAltoNetworks/prisma-access-egress-ips/blob/main/docs/custom-ca.md" target="_blank" rel="noopener noreferrer">custom CA guide</a>).
+      If it ends at a public CA, the reason above usually explains it: an expired certificate, a
+      hostname mismatch, or a wrong clock on the machine running this tool.
+      If you don't recognize the CA, the connection may be intercepted: don't continue.
+    </p>
+    <label class="tls-dialog-check">
+      <input type="checkbox" id="tlsDialogConfirm">
+      <span>Skip certificate verification for the rest of this session, until this page is reloaded or closed. Your credentials will be sent over connections whose identity is not verified.</span>
+    </label>
+    <div class="tls-dialog-actions">
+      <button class="btn btn-ghost" value="cancel">Cancel</button>
+      <button class="btn btn-primary" value="retry" id="tlsDialogRetry" disabled>Continue without verification</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="/static/app.js"></script>
 </body>
