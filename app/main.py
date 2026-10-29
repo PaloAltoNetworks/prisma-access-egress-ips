@@ -5,6 +5,7 @@ Serves the static web frontend from /web and mounts the API routers under /api.
 """
 
 import logging
+from importlib.metadata import version
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,7 +21,7 @@ logging.basicConfig(
 
 app = FastAPI(
     title="Prisma Access Egress IP Utility",
-    version="1.0.0",
+    version=version("prisma-access-egress-ips"),
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
