@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-29
+
 ### Added
 
 - Deployment and reference guides in `docs/`, and a security policy (`SECURITY.md`).
@@ -21,6 +23,11 @@ All notable changes to this project are documented here. The format follows
 - The interactive API documentation (`/api/docs`, `/api/redoc`, `/api/openapi.json`). The
   `/api/...` endpoints serve the web page only and aren't a supported interface; to automate
   lookups, use the Prisma Access egress IP API directly.
+
+### Fixed
+
+- Results tables and batch tabs build the page with text-only DOM operations, so data
+  from the Prisma Access API can never be interpreted as HTML.
 
 ## [0.1.0] - 2026-10-29
 
@@ -52,5 +59,6 @@ All notable changes to this project are documented here. The format follows
   certificate chain it was given and asks before skipping verification for the rest
   of the browser session, instead of retrying automatically.
 
-[Unreleased]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases/tag/v0.1.0

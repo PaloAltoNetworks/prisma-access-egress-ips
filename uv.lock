@@ -584,7 +584,7 @@ wheels = [
 
 [[package]]
 name = "prisma-access-egress-ips"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
