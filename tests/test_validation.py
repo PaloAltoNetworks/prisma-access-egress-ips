@@ -92,7 +92,7 @@ def test_rejected_values_not_echoed():
     assert resp.json()["detail"][0].keys() == {"loc", "msg"}
 
 
-@pytest.mark.parametrize("token", ["a" * 8193, "abc def", "abc<script>", ""])
+@pytest.mark.parametrize("token", ["a" * 8193, "a" * 8192 + "=" * 10, "abc def", "abc<script>", ""])
 def test_invalid_bearer_token_rejected(token):
     resp = client.get("/api/locations", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401

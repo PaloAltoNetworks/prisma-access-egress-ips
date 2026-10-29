@@ -9,7 +9,7 @@ from fastapi import APIRouter, Header, HTTPException
 from app.services.prisma_client import fetch_locations
 
 # RFC 6750 b64token, bounded so an arbitrarily long value is never forwarded upstream
-_VALID_TOKEN = re.compile(r'^[A-Za-z0-9\-._~+/]{1,8192}=*$')
+_VALID_TOKEN = re.compile(r'^[A-Za-z0-9\-._~+/]{1,8192}={0,2}$')
 
 router = APIRouter(prefix="/api/locations", tags=["locations"])
 
