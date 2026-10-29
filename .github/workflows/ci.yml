@@ -1,0 +1,299 @@
+name: CI
+
+# Image tags by trigger:
+#   branch push      tests only
+#   pull request     built, not pushed
+#   push to main     :main, :sha-<commit>, then tag the release if the version is new
+#   v* tag           :X.Y.Z, :X.Y, :latest (only for the highest release)
+#   weekly schedule  rebuild the newest release on fresh base images, same tags
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  # Release builds arrive here: tags created with GITHUB_TOKEN don't fire push events,
+  # so tag-release dispatches this workflow on the new tag.
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve build target
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.target.outputs.ref }}
+      release: ${{ steps.target.outputs.release }}
+      latest: ${{ steps.target.outputs.latest }}
+      build: ${{ steps.target.outputs.build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve target and verify release
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          highest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          ref="$GITHUB_SHA" release="" latest=false build=false
+
+          if [ "$REF_TYPE" = tag ]; then
+            if [[ ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::Tag $REF_NAME is not vX.Y.Z"
+              exit 1
+            fi
+            release="${REF_NAME#v}"
+          else
+            case "$EVENT" in
+              pull_request)
+                build=true
+                ;;
+              push)
+                if [ "$REF" = refs/heads/main ]; then build=true; fi
+                ;;
+              workflow_dispatch)
+                echo "::error::Dispatch this workflow on a v* release tag, not a branch"
+                exit 1
+                ;;
+              schedule)
+                if [ -z "$highest" ]; then
+                  echo "::notice::No release tag yet; nothing to rebuild"
+                else
+                  ref="$highest" release="${highest#v}"
+                fi
+                ;;
+            esac
+          fi
+
+          if [ -n "$release" ]; then
+            tag="v$release"
+            version=$(python3 .github/scripts/release.py version "$tag")
+            if [ "$version" != "$release" ]; then
+              echo "::error::Tag $tag does not match pyproject.toml version $version"
+              exit 1
+            fi
+            python3 .github/scripts/release.py notes "$release" > /dev/null
+            if ! git merge-base --is-ancestor "$tag^{commit}" origin/main; then
+              echo "::error::Tag $tag is not on main"
+              exit 1
+            fi
+            build=true
+            if [ "$tag" = "$highest" ]; then latest=true; fi
+          fi
+
+          {
+            echo "ref=$ref"
+            echo "release=$release"
+            echo "latest=$latest"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+
+  version-check:
+    name: Version bump check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: A bumped version needs a changelog section and no existing tag
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          base=$(python3 .github/scripts/release.py version "origin/$BASE_REF")
+          head=$(python3 .github/scripts/release.py version)
+          if [ "$base" = "$head" ]; then
+            echo "Version unchanged ($head); not a release PR"
+            exit 0
+          fi
+          echo "Release PR: $base -> $head"
+          python3 .github/scripts/release.py notes "$head" > /dev/null
+          if git rev-parse -q --verify "refs/tags/v$head" > /dev/null; then
+            echo "::error::Tag v$head already exists; bump to an unreleased version"
+            exit 1
+          fi
+
+  test:
+    name: Test and audit
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Audit locked runtime dependencies
+        # Advisory on the weekly rebuild so a Python CVE can't hold back base-image patches;
+        # the failure still shows on the run.
+        continue-on-error: ${{ github.event_name == 'schedule' }}
+        run: |
+          uv export --locked --no-dev --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+          uv run pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+
+  build:
+    name: Build and publish image
+    needs: [resolve, test]
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE: ${{ needs.resolve.outputs.release }}
+      # PRs build without pushing; fork PRs couldn't push anyway.
+      PUBLISH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      # QEMU lets buildx cross-compile the arm64 layer on the x86 runner
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=raw,value=latest,enable=${{ needs.resolve.outputs.latest == 'true' }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          # Weekly rebuilds skip the cache so base layers and apt packages are refetched
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record digest
+        if: env.PUBLISH == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: echo "Published \`$DIGEST\`" >> "$GITHUB_STEP_SUMMARY"
+
+  tag-release:
+    name: Tag release
+    needs: [test, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Tag a new version and dispatch its release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version=$(python3 .github/scripts/release.py version)
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            echo "$tag already released; nothing to tag"
+            exit 0
+          fi
+          # No changelog section means this version hasn't been released yet.
+          if ! python3 .github/scripts/release.py notes "$version" > /dev/null 2>&1; then
+            echo "::notice::CHANGELOG.md has no section for $version; not releasing"
+            exit 0
+          fi
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
+          gh workflow run ci.yml --repo "$REPO" --ref "$tag"
+          echo "::notice::Tagged $tag and dispatched its release build"
+
+  github-release:
+    name: Publish GitHub release
+    needs: [resolve, build]
+    # Release tags only: the weekly rebuild reuses an existing release's notes.
+    if: github.ref_type == 'tag' && needs.resolve.outputs.release != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      - name: Create or update release from changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.resolve.outputs.release }}
+          LATEST: ${{ needs.resolve.outputs.latest }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          python3 .github/scripts/release.py notes "$VERSION" > "$notes"
+          if gh release view "v$VERSION" --repo "$REPO" > /dev/null 2>&1; then
+            gh release edit "v$VERSION" --repo "$REPO" --notes-file "$notes" --latest="$LATEST"
+          else
+            gh release create "v$VERSION" --repo "$REPO" --verify-tag \
+              --title "v$VERSION" --notes-file "$notes" --latest="$LATEST"
+          fi

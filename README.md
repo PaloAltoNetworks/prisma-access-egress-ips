@@ -1,8 +1,10 @@
 # Prisma Access Egress IP Utility
 
-[![license](https://img.shields.io/badge/License-PANW_PS-F04E23?logo=paloaltonetworks&logoSize=auto)](./LICENSE.md)
-[![Build](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml/badge.svg)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/container.yml)
-[![ghcr](https://img.shields.io/badge/ghcr.io-latest-blue?logo=docker&logoColor=white)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips)
+[![CI](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/actions/workflows/ci.yml?query=branch%3Amain)
+[![Release](https://img.shields.io/github/v/release/PaloAltoNetworks/prisma-access-egress-ips?sort=semver)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases/latest)
+[![Container](https://img.shields.io/badge/ghcr.io-image-2496ED?logo=docker&logoColor=white)](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips)
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPaloAltoNetworks%2Fprisma-access-egress-ips%2Fmain%2Fpyproject.toml&logo=python&logoColor=white)](./pyproject.toml)
+[![License](https://img.shields.io/badge/License-PANW_PS-F04E23?logo=paloaltonetworks&logoSize=auto)](./LICENSE.md)
 
 A browser-based tool for looking up Prisma Access egress IP addresses. Runs as a single Docker container — enter your API key in the browser, select what you need, and export the results as CSV, JSON, or plain text. No credentials are stored server-side.
 
@@ -21,7 +23,16 @@ curl -fsSLO https://raw.githubusercontent.com/PaloAltoNetworks/prisma-access-egr
 docker compose up -d
 ```
 
-The image is published to the GitHub Container Registry and rebuilt weekly to pick up base-image security patches. To pin a specific release, replace `latest` with a SHA digest from the [package page](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips).
+The image is published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`.
+
+| Tag | Tracks |
+| --- | ------ |
+| `:latest` | Newest release |
+| `:0.1` | Newest `0.1.x` patch release (recommended) |
+| `:0.1.0` | One exact release |
+| `:main` | Unreleased `main` branch, for testing only |
+
+Pin `:0.1` or `:0.1.0` in `compose.yml` for production use. Every week the newest release is rebuilt on fresh base images to pick up OS security patches, so `:latest`, `:0.1` and `:0.1.0` keep the same version but get a new digest. Older releases are not rebuilt. See [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases) for what changed.
 
 ### Option B — Build from source
 

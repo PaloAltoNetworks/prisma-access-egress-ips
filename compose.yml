@@ -4,8 +4,8 @@
 #   docker compose up -d
 #
 # Open http://localhost:8000 once the container starts.
-# To pin to a specific release instead of latest, replace the image tag with
-# a SHA digest from https://github.com/PaloAltoNetworks/prisma-access-egress-ips/pkgs/container/prisma-access-egress-ips
+# :latest is the newest release. To stay on a release line, pin :0.1 (patch updates)
+# or :0.1.0 (exact). Releases: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases
 
 services:
   app:
@@ -14,3 +14,10 @@ services:
       - "8000:8000"
     restart: unless-stopped
     pull_policy: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
