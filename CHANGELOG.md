@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Requests are validated strictly: unknown fields are rejected, the API key and service
+  account credentials have maximum lengths, and the TSG ID must be numeric. Invalid
+  requests return 422 and are never forwarded to Prisma Access.
+
 ## [0.1.1] - 2026-10-29
 
 ### Added

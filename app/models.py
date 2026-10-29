@@ -2,18 +2,27 @@
 Pydantic models for request validation and response serialization.
 """
 
-from typing import Any, Literal, Optional
-from pydantic import BaseModel, field_validator
+from typing import Annotated, Any, Literal, Optional
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 from app.config import ENVIRONMENTS, NODE_PAYLOADS
 import re
 
 # --- Validation patterns ---
-_VALID_API_KEY = re.compile(r'^[A-Za-z0-9\-_+=/.]{10,}$')
+_VALID_API_KEY = re.compile(r'^[A-Za-z0-9\-_+=/.]{10,512}$')
 _VALID_LOCATION = re.compile(r'^[A-Za-z0-9\s\-()\,]{1,100}$')
+
+
+# Service-account credentials. Upper bounds are generous; they keep arbitrarily long
+# values from being forwarded upstream.
+_Credential = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
+_TsgId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r'^[0-9]{1,20}$')]
 
 
 # --- Shared request base ---
 class OutboundRequest(BaseModel):
+    # The server is authoritative: a field it doesn't define is an error, not ignored.
+    model_config = ConfigDict(extra="forbid")
+
     # Set by the browser for the rest of its session once the user, shown a certificate
     # failure, opts out. The server keeps no state: each request carries the flag.
     skip_tls_verify: bool = False
@@ -78,9 +87,9 @@ class PreAllocateRequest(EnvironmentMixin):
 
 # --- Auth requests ---
 class TokenRequest(OutboundRequest):
-    client_id: str
-    client_secret: str
-    tsg_id: str
+    client_id: _Credential
+    client_secret: _Credential
+    tsg_id: _TsgId
 
 
 # --- Response models ---
