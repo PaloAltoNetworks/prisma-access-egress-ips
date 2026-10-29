@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Deployment and reference guides in `docs/`, and a security policy (`SECURITY.md`).
+
+### Changed
+
+- The compose files publish the port on `127.0.0.1` only, so the tool is reachable from the
+  machine running it and not the rest of the network. See `docs/deployment.md` to share it.
+- The README covers the default setup only, and links to the guides for everything else.
+
 ## [0.1.0] - 2026-10-29
 
 ### Added

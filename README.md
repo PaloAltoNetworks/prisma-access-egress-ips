@@ -6,145 +6,63 @@
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPaloAltoNetworks%2Fprisma-access-egress-ips%2Fmain%2Fpyproject.toml&logo=python&logoColor=white)](./pyproject.toml)
 [![License](https://img.shields.io/badge/License-PANW_PS-F04E23?logo=paloaltonetworks&logoSize=auto)](./LICENSE.md)
 
-A browser-based tool for looking up Prisma Access egress IP addresses. Runs as a single Docker container — enter your API key in the browser, select what you need, and export the results as CSV, JSON, or plain text. No credentials are stored server-side.
-
-## Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) (includes Docker Compose)
+A browser-based tool for looking up Prisma Access egress IP addresses. It runs as a single Docker container on your machine: enter your API key in the browser, pick what you need, and export the results as CSV, JSON or plain text. Nothing is stored server-side.
 
 ## Quick Start
 
-### Option A — Hosted image (recommended)
-
-No clone required. Download the compose file and start the container:
+You need [Docker](https://docs.docker.com/get-docker/) with Docker Compose.
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/PaloAltoNetworks/prisma-access-egress-ips/main/compose.yml
 docker compose up -d
 ```
 
-The image is published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`.
+Open **<http://localhost:8000>**.
 
-| Tag | Tracks |
-| --- | ------ |
-| `:latest` | Newest release |
-| `:0.1` | Newest `0.1.x` patch release (recommended) |
-| `:0.1.0` | One exact release |
-| `:main` | Unreleased `main` branch, for testing only |
-
-Pin `:0.1` or `:0.1.0` in `compose.yml` for production use. Every week the newest release is rebuilt on fresh base images to pick up OS security patches, so `:latest`, `:0.1` and `:0.1.0` keep the same version but get a new digest. Older releases are not rebuilt. See [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases) for what changed.
-
-### Option B — Build from source
-
-```bash
-git clone https://github.com/PaloAltoNetworks/prisma-access-egress-ips.git
-cd prisma-access-egress-ips
-docker compose -f compose.build.yml up --build -d
-```
-
-Once running, open **<http://localhost:8000>**.
+This runs the newest release and listens only on your machine. To pin a release, change the port, run it for a team, or build from source, see [Deployment](./docs/deployment.md).
 
 ## Getting Your API Key
 
-You need an **Egress IP API key** from your Prisma Access tenant. The steps depend on your management platform:
+You need an **Egress IP API key** from your Prisma Access tenant:
 
-**Panorama managed**
-
-Panorama tab > Cloud Services Plugin > Configuration > Service Setup > **Egress IP API**
-
-**Strata Cloud Manager (SCM)**
-
-Configuration > NGFW & Prisma Access > Prisma Access > Setup > **Egress IP API**
-
-Copy the API key and paste it into the tool's **API Key** field.
+- **Panorama managed:** Panorama tab > Cloud Services Plugin > Configuration > Service Setup > **Egress IP API**
+- **Strata Cloud Manager:** Configuration > NGFW & Prisma Access > Prisma Access > Setup > **Egress IP API**
 
 ## Using the Tool
 
-1. **Paste your API key** into the API Key field (click the eye icon to verify it).
-2. **Select your environment** from the dropdown (see [Environments](#environments) if unsure).
-3. **Choose a mode:**
-   - **Single** — query one node type at a time.
-   - **Batch (all)** — query all node types at once. Optionally filter by location.
-4. **Pick a node type** (Single mode) or leave the default (Batch mode).
-5. **Click Query.**
+1. Paste your API key into the **API Key** field.
+2. Pick your **environment**. If you're not sure, pick any: when the key is rejected, the tool tries the other environments and switches to the one that accepts it.
+3. Choose **Single** to query one node type, or **Batch (all)** to query every node type at once.
+4. In Single mode, pick a **node type**. For `gw_pre`, you can enter a location to pre-allocate Mobile User IPs there.
+5. Click **Query**, then copy the IPs or download them as CSV, JSON or TXT.
 
-Results appear in a table. From there you can:
-
-- **Copy IPs** to clipboard
-- **Download** as CSV, JSON, or TXT
-
-> **Wrong environment?** If the API returns a `401`, the tool automatically retries against the other environments in parallel and updates the dropdown to whichever one accepted your key.
-
-## Environments
-
-| Key | Endpoint |
-| ----- | ---------- |
-| `prod1` | `api.prod.datapath.prismaaccess.com` |
-| `prod4` | `api.prod4.datapath.prismaaccess.com` |
-| `prod6` | `api.prod6.datapath.prismaaccess.com` |
-| `prod8` | `api.prod8.datapath.prismaaccess.com` |
-| `fedramp` | `api.fed.prismaaccess.com` |
-| `lab` | `api.lab.datapath.prismaaccess.com` |
-
-If you don't know which environment your tenant is on, just pick any — the auto-retry will find the right one.
-
-## Node Types
-
-| Key | Description | Notes |
-| ----- | ------------- | ------- |
-| `gw` | GlobalProtect Gateway (deployed) | Currently active gateways |
-| `gw_all` | GlobalProtect Gateway (all) | Includes provisioned-but-not-yet-deployed |
-| `gw_pre` | Gateway pre-allocated IPs | Exclusive — overlapping IPs from `gw_all` are subtracted |
-| `pt` | GlobalProtect Portal (deployed) | |
-| `rbi` | Remote Browser Isolation | |
-| `rn` | Remote Network (deployed) | Currently active remote networks |
-| `rn_all` | Remote Network (all) | Includes provisioned-but-not-yet-deployed |
-| `swg` | SWG Proxy (deployed) | Exclusive — overlapping IPs from `swg_lb` are subtracted |
-| `swg_lb` | SWG Network Load Balancer | |
-| `swg_all` | SWG Proxy (all) | Exclusive — overlapping IPs from `swg_lb` are subtracted |
-| `all` | Composite — every type, all locations | Batch query across everything |
-| `all_deployed` | Composite — every type, deployed only | Batch query, active infrastructure only |
-
-**Deployed vs. All:** "Deployed" returns IPs for infrastructure that is currently active. "All" also includes IPs that have been provisioned but are not yet in service.
-
-**Exclusive lists:** `swg`, `swg_all`, and `gw_pre` subtract overlapping IPs from related types (`swg_lb` and `gw_all` respectively) so you get a clean, non-overlapping set.
-
-## API Reference
-
-The tool also exposes a REST API if you prefer to query programmatically.
-
-| Method | Path | Description |
-| -------- | ------ | ------------- |
-| `POST` | `/api/ips/query` | Single node type query |
-| `POST` | `/api/ips/batch` | All node types + composites |
-| `POST` | `/api/ips/pre-allocate` | Pre-allocate Mobile User IPs |
-| `GET`  | `/api/locations` | List Prisma Access locations (Bearer token) |
-| `POST` | `/api/auth/token` | Exchange SASE client credentials for bearer token |
-| `GET`  | `/health` | Health check |
-
-Interactive API documentation is available at **<http://localhost:8000/api/docs>** once the container is running.
+Environments, node types and the REST API are described in the [Reference](./docs/reference.md).
 
 ## Troubleshooting
 
 **401 Unauthorized on every environment**
-Your API key may be expired or invalid. Regenerate it from the Egress IP API page in Panorama or SCM.
+Your API key may be expired or invalid. Regenerate it from the Egress IP API page in Panorama or Strata Cloud Manager.
 
-**Container starts but the page won't load**
-Check that port 8000 isn't already in use. To use a different port, edit the `ports` mapping in the compose file (e.g., `9000:8000` to use port 9000).
+**The page won't load**
+Check that nothing else is using port 8000, or [change the port](./docs/deployment.md#changing-the-port).
 
 **Certificate verification failed**
-Your network probably decrypts TLS traffic. Give the container your organization's CA certificate: see [docs/custom-ca.md](./docs/custom-ca.md).
+Your network probably decrypts TLS traffic. Give the container your organization's CA certificate: see [Trusting a custom CA](./docs/custom-ca.md).
 
 **Queries hang or time out**
-The container needs outbound HTTPS access to `*.datapath.prismaaccess.com` (and `api.fed.prismaaccess.com` for FedRAMP). Ensure your firewall or proxy allows this traffic.
+The container needs outbound HTTPS to the Prisma Access APIs. See [Network access](./docs/deployment.md#network-access) for the hosts to allow.
 
 **Empty results for a node type**
-Not all tenants have every service deployed. If a node type returns no results, that service may not be provisioned in your environment.
+Not every tenant has every service deployed. An empty result usually means that service isn't provisioned.
 
-## Contributing
+## Documentation
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for architecture details, project structure, and local development setup.
+- [Deployment](./docs/deployment.md): image tags and pinning, ports, network access, team use, building from source
+- [Reference](./docs/reference.md): environments, node types, REST API
+- [Trusting a custom CA](./docs/custom-ca.md): running behind SSL decryption
+- [Changelog](./CHANGELOG.md) and [Releases](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases)
+- [Contributing](./CONTRIBUTING.md)
 
-## License
+## License and Support
 
-See [LICENSE.md](./LICENSE.md).
+This tool is provided under the Palo Alto Networks Script Software Agreement in [LICENSE.md](./LICENSE.md), as is and without support from Palo Alto Networks. Bug reports and suggestions are welcome as [GitHub issues](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/issues). Report security vulnerabilities privately, as described in [SECURITY.md](./SECURITY.md).

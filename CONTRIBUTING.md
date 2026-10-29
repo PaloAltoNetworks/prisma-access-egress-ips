@@ -45,7 +45,8 @@ These are the maintainers' engineering standards for this repository. Read them 
 ├── uv.lock                   # Locked dependency set used by CI and the image
 ├── .python-version           # Python minor for local dev and CI (matches the image)
 ├── CHANGELOG.md              # Release notes (Keep a Changelog)
-├── docs/                     # User guides (custom-ca.md) and recorded decisions (decisions/)
+├── SECURITY.md               # How to report vulnerabilities
+├── docs/                     # User guides (deployment, reference, custom CA) and decisions/
 ├── tests/                    # pytest suite; gates the container build in CI
 ├── app/
 │   ├── main.py               # FastAPI app, static file serving, health check

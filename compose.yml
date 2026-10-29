@@ -5,13 +5,14 @@
 #
 # Open http://localhost:8000 once the container starts.
 # :latest is the newest release. To stay on a release line, pin :0.1 (patch updates)
-# or :0.1.0 (exact). Releases: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases
+# or :0.1.0 (exact); see docs/deployment.md.
 
 services:
   app:
     image: ghcr.io/paloaltonetworks/prisma-access-egress-ips:latest
+    # Only this machine can reach it; see docs/deployment.md before exposing it further
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     pull_policy: always
     read_only: true
