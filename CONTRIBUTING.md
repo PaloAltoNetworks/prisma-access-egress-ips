@@ -17,6 +17,8 @@ FastAPI worker (app/, Python + httpx)
 
 The worker is a stateless proxy. Credentials arrive with each request and leave with the response; nothing is persisted. There are no databases, caches or environment variables, and all configuration is in `app/config.py`.
 
+**The web page is the only supported interface.** The `/api/...` endpoints exist to serve it: they're not documented for users, publish no OpenAPI schema, and can change in any release without a version bump to signal it. Users who want to automate lookups call the Prisma Access egress IP API directly. `/api/auth/token` and `/api/locations` are kept for UI features that use SASE credentials.
+
 ## Engineering Principles
 
 These are the maintainers' engineering standards for this repository. Read them before changing the code, CI, the Dockerfile or dependencies.
@@ -83,7 +85,7 @@ Or build and run the production image:
 docker compose -f compose.build.yml up --build
 ```
 
-Either way the app is on <http://localhost:8000>, with interactive API docs at <http://localhost:8000/api/docs> (ReDoc at `/api/redoc`, schema at `/api/openapi.json`).
+Either way the app is on <http://localhost:8000>.
 
 ### Dependencies
 

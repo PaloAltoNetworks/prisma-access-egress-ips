@@ -22,9 +22,10 @@ logging.basicConfig(
 app = FastAPI(
     title="Prisma Access Egress IP Utility",
     version=version("prisma-access-egress-ips"),
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    # /api serves the web page only and isn't offered as an interface: no published docs or schema
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.include_router(ips.router)
