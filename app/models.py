@@ -3,7 +3,7 @@ Pydantic models for request validation and response serialization.
 """
 
 from typing import Annotated, Any, Literal, Optional
-from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, StrictBool, StringConstraints, field_validator
 from app.config import ENVIRONMENTS, NODE_PAYLOADS
 import re
 
@@ -25,7 +25,8 @@ class OutboundRequest(BaseModel):
 
     # Set by the browser for the rest of its session once the user, shown a certificate
     # failure, opts out. The server keeps no state: each request carries the flag.
-    skip_tls_verify: bool = False
+    # Strict, so only a JSON boolean (not "yes" or 1) can turn verification off.
+    skip_tls_verify: StrictBool = False
 
 
 class EnvironmentMixin(OutboundRequest):
@@ -48,7 +49,7 @@ class IPQueryRequest(EnvironmentMixin):
     @classmethod
     def validate_node_type(cls, v: str) -> str:
         if v not in NODE_PAYLOADS:
-            raise ValueError(f"Unknown node_type '{v}'. Valid: {', '.join(NODE_PAYLOADS)}")
+            raise ValueError(f"Unknown node_type. Valid: {', '.join(NODE_PAYLOADS)}")
         return v
 
 

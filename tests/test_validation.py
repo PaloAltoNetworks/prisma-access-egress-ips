@@ -75,3 +75,29 @@ def test_invalid_token_request_rejected(field, value):
 
 def test_longest_api_key_accepted():
     BatchQueryRequest.model_validate({"api_key": "a" * 512, "environment": "prod1"})
+
+
+@pytest.mark.parametrize("value", ["yes", "true", 1])
+def test_skip_tls_verify_requires_boolean(value):
+    body = {**WEB_PAGE_REQUESTS[1][2], "skip_tls_verify": value}
+    resp = client.post("/api/ips/batch", json=body)
+    assert resp.status_code == 422
+
+
+def test_rejected_values_not_echoed():
+    secret = "s3cr3t-" + "x" * 300
+    resp = client.post("/api/auth/token", json={**TOKEN_REQUEST, "client_secret": secret})
+    assert resp.status_code == 422
+    assert secret not in resp.text
+    assert resp.json()["detail"][0].keys() == {"loc", "msg"}
+
+
+@pytest.mark.parametrize("token", ["a" * 8193, "abc def", "abc<script>", ""])
+def test_invalid_bearer_token_rejected(token):
+    resp = client.get("/api/locations", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
+
+
+def test_jwt_bearer_token_accepted():
+    from app.routers.locations import _VALID_TOKEN
+    assert _VALID_TOKEN.match("eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl-_~+/==")
