@@ -120,6 +120,8 @@ Versions follow [SemVer](https://semver.org). `pyproject.toml` is the only versi
 
 **To release**, bump `version` in `pyproject.toml` in the PR, and in `CHANGELOG.md` turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`, leaving a fresh empty `[Unreleased]` above it. CI checks that a bumped version has a changelog section and isn't tagged yet. Once the PR is squash-merged, CI tags `vX.Y.Z` on `main` and dispatches the release build. That build checks the tag matches `pyproject.toml`, the changelog section exists and the commit is on `main`, then publishes the images and a GitHub release whose notes are the changelog section. PRs without a bump merge without releasing.
 
+A repository ruleset stops anyone but admins from moving or deleting `v*` tags. Creating them is left open so CI can tag with `GITHUB_TOKEN`, which is safe because the release build only publishes a tag that passes the checks above.
+
 ## Git Workflow
 
 Branch as `feat/<thing>` or `fix/<thing>`, one logical change per PR, squash merge. Branches are deleted on merge.
