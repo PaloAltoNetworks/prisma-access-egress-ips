@@ -4,6 +4,8 @@
 let currentMode = 'single';
 let lastResponse = null;   // raw API response stored for export
 let activeBatchKey = null; // which node-type tab is selected in batch view
+// Set only from the certificate dialog. Memory only: reloading the page turns verification back on.
+let skipTlsForSession = false;
 
 // ── Mode toggle ────────────────────────────────────────────────────────
 function setMode(mode) {
@@ -45,34 +47,46 @@ async function runQuery() {
       ? `Pre-allocating IPs for ${location}…`
       : `Fetching ${nodeType}…`;
 
-  setLoading(true, loadingMsg);
-  clearResults();
+  for (;;) {
+    setLoading(true, loadingMsg);
+    clearResults();
+    const tlsOpt = skipTlsForSession ? { skip_tls_verify: true } : {};
 
-  try {
-    if (currentMode === 'single') {
-      if (isPreAllocate) {
-        const res = await apiFetch('/api/ips/pre-allocate', { api_key: apiKey, environment, location });
-        lastResponse = res;
-        checkEnvironmentUpdate(res);
-        renderPreAllocate(res);
+    try {
+      if (currentMode === 'single') {
+        if (isPreAllocate) {
+          const res = await apiFetch('/api/ips/pre-allocate', { api_key: apiKey, environment, location, ...tlsOpt });
+          lastResponse = res;
+          checkEnvironmentUpdate(res);
+          renderPreAllocate(res);
+        } else {
+          const res = await apiFetch('/api/ips/query', { api_key: apiKey, environment, node_type: nodeType, ...tlsOpt });
+          lastResponse = res;
+          checkEnvironmentUpdate(res);
+          renderSingle(res);
+        }
       } else {
-        const res = await apiFetch('/api/ips/query', { api_key: apiKey, environment, node_type: nodeType });
+        const res = await apiFetch('/api/ips/batch', { api_key: apiKey, environment, ...tlsOpt });
         lastResponse = res;
         checkEnvironmentUpdate(res);
-        renderSingle(res);
+        renderBatch(res);
       }
-    } else {
-      const res = await apiFetch('/api/ips/batch', { api_key: apiKey, environment });
-      lastResponse = res;
-      checkEnvironmentUpdate(res);
-      renderBatch(res);
+      renderTlsFailures(lastResponse.tls_failures);
+      document.getElementById('footerTimestamp').textContent = new Date().toLocaleString();
+      document.getElementById('clearBtn').style.display = '';
+      return;
+    } catch (err) {
+      setLoading(false);
+      if (err.tls && !skipTlsForSession && await confirmSkipTls(err.tls)) {
+        setSkipTlsForSession(true);
+        continue;
+      }
+      renderTlsFailures(err.tlsFailures);
+      showError(err.message || 'Request failed.');
+      return;
+    } finally {
+      setLoading(false);
     }
-    document.getElementById('footerTimestamp').textContent = new Date().toLocaleString();
-    document.getElementById('clearBtn').style.display = '';
-  } catch (err) {
-    showError(err.message || 'Request failed.');
-  } finally {
-    setLoading(false);
   }
 }
 
@@ -83,11 +97,103 @@ async function apiFetch(path, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(detail.detail || `HTTP ${res.status}`);
+    const { detail } = await res.json().catch(() => ({ detail: res.statusText }));
+    if (detail?.code === 'tls_verify_failed') {
+      throw Object.assign(new Error(detail.message), { tls: detail });
+    }
+    if (detail?.code === 'key_rejected') {
+      throw Object.assign(new Error(detail.message), { tlsFailures: detail.tls_failures });
+    }
+    const message = typeof detail === 'string' ? detail
+      : Array.isArray(detail) ? detail.map(d => d.msg).join('; ')
+      : '';
+    throw new Error(message || `HTTP ${res.status}`);
   }
   return res.json();
 }
+
+// ── Certificate verification failure ──────────────────────────────────
+function setSkipTlsForSession(on) {
+  skipTlsForSession = on;
+  document.getElementById('tlsSessionNotice').style.display = on ? '' : 'none';
+}
+
+// Certificate fields come from the remote server: render with textContent only.
+function renderTlsCertificate(cert) {
+  const setFact = (id, value) => {
+    const dd = document.getElementById(id);
+    dd.textContent = value || '';
+    dd.style.display = dd.previousElementSibling.style.display = value ? '' : 'none';
+  };
+  setFact('tlsDialogSubject', cert?.subject);
+  setFact('tlsDialogAltNames', cert?.alt_names?.join(', '));
+  setFact('tlsDialogValidity', cert && cert.not_before && `${cert.not_before} to ${cert.not_after}`);
+  setFact('tlsDialogFingerprint', cert?.sha256);
+
+  const chain = document.getElementById('tlsDialogChain');
+  chain.replaceChildren();
+  for (const link of cert?.chain || []) {
+    const item = document.createElement('li');
+    const subject = document.createElement('span');
+    subject.className = 'tls-chain-subject';
+    subject.textContent = link.subject;
+    const issuer = document.createElement('span');
+    issuer.className = 'tls-chain-issuer';
+    issuer.textContent = `issued by ${link.issuer}`;
+    item.append(subject, issuer);
+    chain.append(item);
+  }
+  document.getElementById('tlsDialogChainSection').style.display = cert?.chain?.length ? '' : 'none';
+  document.getElementById('tlsDialogNoDetails').style.display = cert ? 'none' : '';
+}
+
+// Hosts skipped during environment auto-detection; each can open the full dialog.
+function renderTlsFailures(failures) {
+  const list = document.getElementById('tlsFailuresList');
+  list.replaceChildren();
+  for (const failure of failures || []) {
+    const item = document.createElement('li');
+    const host = document.createElement('span');
+    host.className = 'tls-failures-host';
+    host.textContent = failure.host;
+    const reason = document.createElement('span');
+    reason.className = 'tls-failures-reason';
+    reason.textContent = failure.reason;
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'link-btn';
+    view.textContent = 'View details';
+    view.addEventListener('click', async () => {
+      if (await confirmSkipTls(failure)) {
+        setSkipTlsForSession(true);
+        runQuery();
+      }
+    });
+    item.append(host, reason, view);
+    list.append(item);
+  }
+  document.getElementById('tlsFailures').style.display = failures?.length ? '' : 'none';
+}
+
+// Resolves true only if the user ticks the acknowledgement and chooses to continue.
+function confirmSkipTls(info) {
+  const dialog = document.getElementById('tlsDialog');
+  document.getElementById('tlsDialogMessage').textContent = info.message;
+  document.getElementById('tlsDialogHost').textContent = info.host;
+  document.getElementById('tlsDialogReason').textContent = info.reason;
+  renderTlsCertificate(info.certificate);
+  document.getElementById('tlsDialogConfirm').checked = false;
+  document.getElementById('tlsDialogRetry').disabled = true;
+  dialog.returnValue = '';
+  return new Promise(resolve => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'retry'), { once: true });
+    dialog.showModal();
+  });
+}
+
+document.getElementById('tlsDialogConfirm').addEventListener('change', e => {
+  document.getElementById('tlsDialogRetry').disabled = !e.target.checked;
+});
 
 // ── Single mode render ─────────────────────────────────────────────────
 function renderSingle(res) {
@@ -331,6 +437,7 @@ function clearResults() {
   document.getElementById('resultsSection').style.display = 'none';
   document.getElementById('nodeTabs').style.display = 'none';
   document.getElementById('clearBtn').style.display = 'none';
+  document.getElementById('tlsFailures').style.display = 'none';
   hideBanner();
 }
 

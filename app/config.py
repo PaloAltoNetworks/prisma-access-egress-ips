@@ -47,6 +47,11 @@ INDIVIDUAL_NODE_TYPES = [k for k in NODE_PAYLOADS if k not in ("all", "all_deplo
 COMPONENTS_FOR_ALL: list[str] = ["gw_all", "rn_all", "pt", "rbi", "swg_all", "swg_lb", "gw_pre"]
 COMPONENTS_FOR_ALL_DEPLOYED: list[str] = ["gw", "rn", "pt", "rbi", "swg", "swg_lb"]
 
+# --- TLS ---
+# Extra CA certificates (*.pem / *.crt) trusted alongside the public roots, such as a
+# corporate SSL-decryption root. Mount a directory here; see docs/custom-ca.md.
+CUSTOM_CA_DIR = "/certs"
+
 # --- HTTP client settings ---
 API_TIMEOUT_SECONDS = 30
 MAX_CONCURRENT_REQUESTS = 10

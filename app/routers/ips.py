@@ -16,7 +16,12 @@ from app.models import (
     PreAllocateResponse,
     ZoneData,
 )
-from app.services.prisma_client import fetch_prisma_ips, find_working_environment, probe_environment
+from app.services.prisma_client import (
+    fetch_prisma_ips,
+    find_working_environment,
+    key_rejected,
+    probe_environment,
+)
 from app.services.ip_processor import (
     build_batch_response,
     extract_rn_site_metadata,
@@ -30,15 +35,17 @@ router = APIRouter(prefix="/api/ips", tags=["ips"])
 async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
     """Fetch egress IPs for a single node type."""
     env = req.environment
+    skip = req.skip_tls_verify
+    tls_failures: list[dict] = []
     try:
-        raw = await fetch_prisma_ips(env, req.node_type, req.api_key)
+        raw = await fetch_prisma_ips(env, req.node_type, req.api_key, skip_tls_verify=skip)
     except HTTPException as exc:
         if exc.status_code != 401:
             raise
-        env = await find_working_environment(req.api_key, exclude=req.environment)
+        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, skip_tls_verify=skip)
         if env is None:
-            raise HTTPException(status_code=401, detail="API key was rejected by all environments.")
-        raw = await fetch_prisma_ips(env, req.node_type, req.api_key)
+            raise key_rejected(tls_failures)
+        raw = await fetch_prisma_ips(env, req.node_type, req.api_key, skip_tls_verify=skip)
 
     data = process_api_response(raw, env, req.node_type)
 
@@ -56,6 +63,7 @@ async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
         data=data,
         rn_site_details=rn_site_details,
         rn_fqdn_suffix=rn_fqdn_suffix,
+        tls_failures=tls_failures or None,
     )
 
 
@@ -63,16 +71,18 @@ async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
 async def query_batch(req: BatchQueryRequest) -> BatchQueryResponse:
     """Fetch all node types concurrently, compute exclusive and composite lists."""
     env = req.environment
+    skip = req.skip_tls_verify
+    tls_failures: list[dict] = []
 
     # Probe with a single request before fanning out — avoids sending every batch
     # request to the wrong environment when the API key belongs to a different one.
-    if await probe_environment(env, req.api_key) is False:
-        env = await find_working_environment(req.api_key, exclude=req.environment)
+    if await probe_environment(env, req.api_key, skip) is False:
+        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, skip_tls_verify=skip)
         if env is None:
-            raise HTTPException(status_code=401, detail="API key was rejected by all environments.")
+            raise key_rejected(tls_failures)
 
     results, composite_all, composite_all_deployed, rn_site_details, _ = (
-        await build_batch_response(env, req.api_key)
+        await build_batch_response(env, req.api_key, skip)
     )
 
     return BatchQueryResponse(
@@ -81,6 +91,7 @@ async def query_batch(req: BatchQueryRequest) -> BatchQueryResponse:
         all=composite_all,
         all_deployed=composite_all_deployed,
         rn_site_details=rn_site_details if rn_site_details else None,
+        tls_failures=tls_failures or None,
     )
 
 
@@ -93,15 +104,17 @@ async def pre_allocate(req: PreAllocateRequest) -> PreAllocateResponse:
         "serviceType": "gp_gateway",
         "location": [req.location],
     }
+    skip = req.skip_tls_verify
+    tls_failures: list[dict] = []
     try:
-        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload)
+        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, skip_tls_verify=skip)
     except HTTPException as exc:
         if exc.status_code != 401:
             raise
-        env = await find_working_environment(req.api_key, exclude=req.environment)
+        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, skip_tls_verify=skip)
         if env is None:
-            raise HTTPException(status_code=401, detail="API key was rejected by all environments.")
-        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload)
+            raise key_rejected(tls_failures)
+        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, skip_tls_verify=skip)
 
     data = process_api_response(raw, env, "pre_allocate")
 
@@ -109,4 +122,5 @@ async def pre_allocate(req: PreAllocateRequest) -> PreAllocateResponse:
         environment=env,
         location=req.location,
         data=data,
+        tls_failures=tls_failures or None,
     )

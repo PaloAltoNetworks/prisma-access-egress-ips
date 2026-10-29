@@ -21,3 +21,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Behind SSL decryption, mount your organization's CA certificate(s); see docs/custom-ca.md
+    # volumes:
+    #   - ./certs:/certs:ro

@@ -132,6 +132,9 @@ Your API key may be expired or invalid. Regenerate it from the Egress IP API pag
 **Container starts but the page won't load**
 Check that port 8000 isn't already in use. To use a different port, edit the `ports` mapping in the compose file (e.g., `9000:8000` to use port 9000).
 
+**Certificate verification failed**
+Your network probably decrypts TLS traffic. Give the container your organization's CA certificate: see [docs/custom-ca.md](./docs/custom-ca.md).
+
 **Queries hang or time out**
 The container needs outbound HTTPS access to `*.datapath.prismaaccess.com` (and `api.fed.prismaaccess.com` for FedRAMP). Ensure your firewall or proxy allows this traffic.
 

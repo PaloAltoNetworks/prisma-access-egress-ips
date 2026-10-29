@@ -23,6 +23,7 @@ These are the maintainers' engineering standards for this repository. Read them 
 
 - **Right-size it.** One stateless container. Anything that stores data is a design change; raise an issue first.
 - **Secrets never go in git, images or logs.** Never log a request body, header or token.
+- **Secrets only travel over verified TLS.** Never fall back to an unverified connection automatically. Users behind SSL decryption mount their organization's CA ([docs/custom-ca.md](./docs/custom-ca.md)). The one exception is an opt-out the user confirms after seeing the failing certificate chain. It lasts for the browser session only and is sent as a flag on each request; the server keeps no state.
 - **The server is authoritative.** Request models forbid unknown fields (`model_config = ConfigDict(extra="forbid")`) and bound string lengths. Client-side checks are only there for UX.
 - **Escape by construction.** In the browser, build the DOM with `textContent` and `createElement`, not `innerHTML` with interpolated values. Treat data from the Prisma Access API as untrusted too.
 - **Minimal dependencies.** Each one is a decision. Prefer the standard library and what FastAPI already brings.
@@ -44,7 +45,7 @@ These are the maintainers' engineering standards for this repository. Read them 
 ├── uv.lock                   # Locked dependency set used by CI and the image
 ├── .python-version           # Python minor for local dev and CI (matches the image)
 ├── CHANGELOG.md              # Release notes (Keep a Changelog)
-├── docs/decisions/           # Recorded design decisions
+├── docs/                     # User guides (custom-ca.md) and recorded decisions (decisions/)
 ├── tests/                    # pytest suite; gates the container build in CI
 ├── app/
 │   ├── main.py               # FastAPI app, static file serving, health check
@@ -56,6 +57,7 @@ These are the maintainers' engineering standards for this repository. Read them 
 │   │   └── auth.py           # /api/auth/token
 │   └── services/
 │       ├── prisma_client.py  # Async client for the Prisma Access, SASE and OAuth APIs
+│       ├── tls.py            # Verified TLS context, custom CA loading, certificate errors
 │       └── ip_processor.py   # Business logic: normalize, subtract, merge, batch
 └── web/
     ├── index.html            # Single-page frontend
@@ -111,6 +113,7 @@ All runtime configuration lives in `app/config.py`:
 | `API_URLS` | Maps environment keys to Prisma Access API endpoints |
 | `LOCATIONS_API_URL` | SASE Config API endpoint for Prisma Access locations |
 | `OAUTH_TOKEN_URL` | OAuth endpoint that exchanges SASE client credentials for a bearer token |
+| `CUSTOM_CA_DIR` | Directory (`/certs`) whose `*.pem` / `*.crt` files are trusted alongside the public roots |
 | `NODE_PAYLOADS` | Maps node type keys to API request bodies (`serviceType`, `addrType`, `location`) |
 | `COMPONENTS_FOR_ALL` | Node types included in the `all` composite aggregate |
 | `COMPONENTS_FOR_ALL_DEPLOYED` | Node types included in the `all_deployed` composite aggregate |

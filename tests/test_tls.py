@@ -1,0 +1,219 @@
+"""
+Certificate verification: failures surface as a structured error, nothing retries without
+verification on its own, and the opt-out flag reaches the HTTP client only when sent.
+"""
+
+import hashlib
+import shutil
+import ssl
+
+import certifi
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.services import prisma_client, tls
+
+client = TestClient(app)
+
+def _first_root_der() -> bytes:
+    bundle = open(certifi.where()).read()
+    begin, end = "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"
+    return ssl.PEM_cert_to_DER_cert(bundle[bundle.index(begin): bundle.index(end) + len(end)])
+
+
+QUERY = {"api_key": "a" * 32, "environment": "prod1", "node_type": "gw"}
+
+
+def _cert_failure(request: httpx.Request) -> httpx.Response:
+    err = ssl.SSLCertVerificationError(1, "certificate verify failed")
+    err.verify_message = "self-signed certificate in certificate chain"
+    raise httpx.ConnectError("certificate verify failed", request=request) from err
+
+
+@pytest.fixture
+def upstream(monkeypatch):
+    """Route outbound calls to a handler and record each call's skip_tls_verify value."""
+    calls: list[bool] = []
+    state = {"handler": lambda request: httpx.Response(200, json={"status": "success", "result": []})}
+
+    def fake_client(skip_tls_verify: bool, timeout: float = 30) -> httpx.AsyncClient:
+        calls.append(skip_tls_verify)
+        return httpx.AsyncClient(transport=httpx.MockTransport(lambda r: state["handler"](r)))
+
+    async def no_certificate_lookup(host: str, port: int) -> None:
+        return None
+
+    monkeypatch.setattr(prisma_client, "_client", fake_client)
+    monkeypatch.setattr(tls.asyncio, "to_thread", lambda fn, *a: no_certificate_lookup(*a))
+    return state, calls
+
+
+def test_cert_failure_returns_structured_error_without_retry(upstream):
+    state, calls = upstream
+    state["handler"] = _cert_failure
+
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert detail["code"] == tls.TLS_VERIFY_FAILED
+    assert detail["host"] == "api.prod.datapath.prismaaccess.com"
+    assert detail["reason"] == "self-signed certificate in certificate chain"
+    assert calls == [False]
+
+
+def test_batch_probe_cert_failure_is_not_treated_as_unreachable(upstream):
+    state, calls = upstream
+    state["handler"] = _cert_failure
+
+    resp = client.post("/api/ips/batch", json={"api_key": "a" * 32, "environment": "prod1"})
+
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["code"] == tls.TLS_VERIFY_FAILED
+    assert calls == [False]
+
+
+def test_opt_out_is_passed_through_per_request(upstream):
+    _, calls = upstream
+
+    assert client.post("/api/ips/query", json={**QUERY, "skip_tls_verify": True}).status_code == 200
+    assert client.post("/api/ips/query", json=QUERY).status_code == 200
+
+    assert calls == [True, False]
+
+
+def test_other_connect_errors_are_plain_502(upstream):
+    state, _ = upstream
+
+    def refused(request):
+        raise httpx.ConnectError("connection refused", request=request)
+
+    state["handler"] = refused
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 502
+    assert isinstance(resp.json()["detail"], str)
+
+
+def test_verify_setting():
+    assert tls.verify_setting(True) is False
+    assert isinstance(tls.verify_setting(False), ssl.SSLContext)
+
+
+def test_custom_ca_dir_adds_certificates_and_skips_bad_files(tmp_path, monkeypatch):
+    # Shrink the public roots to one certificate so additions from the directory are visible.
+    bundle_path = certifi.where()
+    bundle = open(bundle_path).read()
+    end = "-----END CERTIFICATE-----"
+    one_root = tmp_path / "one-root.pem"
+    one_root.write_text(bundle[: bundle.index(end) + len(end)] + "\n")
+    monkeypatch.setattr(tls.certifi, "where", lambda: str(one_root))
+
+    ca_dir = tmp_path / "certs"
+    ca_dir.mkdir()
+    default = tls.build_context(ca_dir)
+    assert default.cert_store_stats()["x509_ca"] == 1
+    assert default.verify_flags & ssl.VERIFY_X509_STRICT
+
+    shutil.copy(bundle_path, ca_dir / "corp.pem")
+    (ca_dir / "broken.crt").write_text("not a certificate")
+    (ca_dir / "notes.txt").write_text("ignored")
+
+    ctx = tls.build_context(ca_dir)
+
+    assert ctx.cert_store_stats()["x509_ca"] > 1
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname
+    assert not ctx.verify_flags & ssl.VERIFY_X509_STRICT
+
+
+def test_describe_chain_summarizes_every_certificate():
+    parsed = [
+        {
+            "subject": ((("commonName", "api.prod.datapath.prismaaccess.com"),),),
+            "issuer": ((("commonName", "Forward Trust CA"),), (("organizationName", "Example Corp"),)),
+            "subjectAltName": (("DNS", "api.prod.datapath.prismaaccess.com"), ("IP Address", "10.0.0.1")),
+            "notBefore": "Jan  1 00:00:00 2026 GMT",
+            "notAfter": "Jan  1 00:00:00 2027 GMT",
+        },
+        {
+            "subject": ((("commonName", "Forward Trust CA"),),),
+            "issuer": ((("commonName", "Example Corp Root CA"),),),
+        },
+    ]
+    leaf_der = _first_root_der()
+
+    cert = tls.describe_chain(parsed, leaf_der)
+
+    assert cert["subject"] == "api.prod.datapath.prismaaccess.com"
+    assert cert["alt_names"] == ["api.prod.datapath.prismaaccess.com"]
+    assert [link["issuer"] for link in cert["chain"]] == [
+        "Forward Trust CA (Example Corp)",
+        "Example Corp Root CA",
+    ]
+    assert cert["not_after"] == "Jan  1 00:00:00 2027 GMT"
+    assert cert["sha256"].replace(":", "") == hashlib.sha256(leaf_der).hexdigest().upper()
+
+
+def test_cert_failure_on_one_environment_does_not_hide_a_match(upstream):
+    state, _ = upstream
+
+    def handler(request):
+        host = request.url.host
+        if host == "api.fed.prismaaccess.com":
+            return _cert_failure(request)
+        if host == "api.prod4.datapath.prismaaccess.com":
+            return httpx.Response(200, json={"status": "success", "result": []})
+        return httpx.Response(401, json={"status": "error", "result": "Invalid API key"})
+
+    state["handler"] = handler
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["environment"] == "prod4"
+    assert [f["host"] for f in body["tls_failures"]] == ["api.fed.prismaaccess.com"]
+
+
+def test_rejected_key_lists_environments_that_could_not_be_checked(upstream):
+    state, _ = upstream
+
+    def handler(request):
+        if request.url.host == "api.fed.prismaaccess.com":
+            return _cert_failure(request)
+        return httpx.Response(401, json={"status": "error", "result": "Invalid API key"})
+
+    state["handler"] = handler
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 401
+    detail = resp.json()["detail"]
+    assert detail["code"] == "key_rejected"
+    assert [f["host"] for f in detail["tls_failures"]] == ["api.fed.prismaaccess.com"]
+
+
+def test_cert_failure_everywhere_opens_the_dialog(upstream):
+    state, _ = upstream
+
+    def handler(request):
+        if request.url.host == "api.prod.datapath.prismaaccess.com":
+            return httpx.Response(401, json={"status": "error", "result": "Invalid API key"})
+        return _cert_failure(request)
+
+    state["handler"] = handler
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["code"] == tls.TLS_VERIFY_FAILED
+
+
+def test_plain_rejection_keeps_string_detail(upstream):
+    state, _ = upstream
+    state["handler"] = lambda request: httpx.Response(401, json={"status": "error", "result": "Invalid API key"})
+
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "API key was rejected by all environments."

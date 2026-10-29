@@ -2,7 +2,7 @@
 Pydantic models for request validation and response serialization.
 """
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from pydantic import BaseModel, field_validator
 from app.config import ENVIRONMENTS, NODE_PAYLOADS
 import re
@@ -13,7 +13,13 @@ _VALID_LOCATION = re.compile(r'^[A-Za-z0-9\s\-()\,]{1,100}$')
 
 
 # --- Shared request base ---
-class EnvironmentMixin(BaseModel):
+class OutboundRequest(BaseModel):
+    # Set by the browser for the rest of its session once the user, shown a certificate
+    # failure, opts out. The server keeps no state: each request carries the flag.
+    skip_tls_verify: bool = False
+
+
+class EnvironmentMixin(OutboundRequest):
     environment: Literal["fedramp", "lab", "prod1", "prod4", "prod6", "prod8"]
 
 
@@ -71,7 +77,7 @@ class PreAllocateRequest(EnvironmentMixin):
 
 
 # --- Auth requests ---
-class TokenRequest(BaseModel):
+class TokenRequest(OutboundRequest):
     client_id: str
     client_secret: str
     tsg_id: str
@@ -93,7 +99,13 @@ class RNSiteDetail(BaseModel):
     site_count: int
 
 
-class IPQueryResponse(BaseModel):
+class EnvironmentSearchResult(BaseModel):
+    # Environments skipped during auto-detection because their certificate couldn't be
+    # verified; the UI lists them so the user can inspect each one.
+    tls_failures: Optional[list[dict[str, Any]]] = None
+
+
+class IPQueryResponse(EnvironmentSearchResult):
     node_type: str
     environment: str
     data: list[ZoneData]
@@ -102,7 +114,7 @@ class IPQueryResponse(BaseModel):
     rn_fqdn_suffix: Optional[str] = None
 
 
-class BatchQueryResponse(BaseModel):
+class BatchQueryResponse(EnvironmentSearchResult):
     environment: str
     # Keyed by node_type. Each value is the processed, exclusive IP list for that type.
     results: dict[str, list[ZoneData]]
@@ -113,7 +125,7 @@ class BatchQueryResponse(BaseModel):
     rn_site_details: Optional[dict[str, list[RNSiteDetail]]] = None
 
 
-class PreAllocateResponse(BaseModel):
+class PreAllocateResponse(EnvironmentSearchResult):
     environment: str
     location: str
     data: list[ZoneData]
