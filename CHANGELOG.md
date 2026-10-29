@@ -6,11 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-29
-
 ### Added
 
-- First versioned release. Images are published as `:0.1.0`, `:0.1` and `:latest`.
+- Versioned releases. Images are published as `:X.Y.Z`, `:X.Y` and `:latest`.
 - `/api/openapi.json` reports the version from `pyproject.toml`.
 - Container `HEALTHCHECK` on `/health`.
 
@@ -23,5 +21,4 @@ All notable changes to this project are documented here. The format follows
 - `:latest` now tracks the newest release instead of every commit to `main`. Commits
   to `main` are published as `:main`.
 
-[Unreleased]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases/tag/v0.1.0
+[Unreleased]: https://github.com/PaloAltoNetworks/prisma-access-egress-ips/commits/main

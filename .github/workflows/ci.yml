@@ -257,7 +257,11 @@ jobs:
             echo "$tag already released; nothing to tag"
             exit 0
           fi
-          python3 .github/scripts/release.py notes "$version" > /dev/null
+          # No changelog section means this version hasn't been released yet.
+          if ! python3 .github/scripts/release.py notes "$version" > /dev/null 2>&1; then
+            echo "::notice::CHANGELOG.md has no section for $version; not releasing"
+            exit 0
+          fi
           gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
           gh workflow run ci.yml --repo "$REPO" --ref "$tag"
           echo "::notice::Tagged $tag and dispatched its release build"
