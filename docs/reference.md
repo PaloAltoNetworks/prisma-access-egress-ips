@@ -41,16 +41,9 @@ counted once.
 
 For Remote Network types (`rn`, `rn_all`), results also list the sites behind each IP.
 
-## REST API
+## Scripting
 
-The container exposes the same queries as a REST API. Interactive documentation is at
-<http://localhost:8000/api/docs> while it's running.
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `POST` | `/api/ips/query` | One node type |
-| `POST` | `/api/ips/batch` | All node types and composites |
-| `POST` | `/api/ips/pre-allocate` | Pre-allocate Mobile User IPs for a location |
-| `GET`  | `/api/locations` | Prisma Access locations (needs a bearer token) |
-| `POST` | `/api/auth/token` | Exchange SASE client credentials for a bearer token |
-| `GET`  | `/health` | Health check |
+The tool is meant to be used through its web page. Its `/api/...` endpoints exist only to serve
+that page, aren't a supported interface, and can change in any release. To automate egress IP
+lookups, call the Prisma Access egress IP API directly with your API key, the same API this tool
+uses; it's described in the Prisma Access documentation.

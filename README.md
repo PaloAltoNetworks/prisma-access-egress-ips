@@ -36,7 +36,7 @@ You need an **Egress IP API key** from your Prisma Access tenant:
 4. In Single mode, pick a **node type**. For `gw_pre`, you can enter a location to pre-allocate Mobile User IPs there.
 5. Click **Query**, then copy the IPs or download them as CSV, JSON or TXT.
 
-Environments, node types and the REST API are described in the [Reference](./docs/reference.md).
+Environments and node types are described in the [Reference](./docs/reference.md).
 
 ## Troubleshooting
 
@@ -58,7 +58,7 @@ Not every tenant has every service deployed. An empty result usually means that 
 ## Documentation
 
 - [Deployment](./docs/deployment.md): image tags and pinning, ports, network access, team use, building from source
-- [Reference](./docs/reference.md): environments, node types, REST API
+- [Reference](./docs/reference.md): environments, node types, scripting
 - [Trusting a custom CA](./docs/custom-ca.md): running behind SSL decryption
 - [Changelog](./CHANGELOG.md) and [Releases](https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases)
 - [Contributing](./CONTRIBUTING.md)
