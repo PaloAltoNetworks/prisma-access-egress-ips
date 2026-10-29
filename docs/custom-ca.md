@@ -78,6 +78,9 @@ You should see `Trusting additional CA certificates from /certs/corp-ca.pem`. A 
   shows usually explains the failure: an expired certificate, a hostname mismatch, or a wrong
   clock on the machine running the container. If you don't recognize the CA, the connection
   may be intercepted.
+- If you route the container through an explicit proxy (`HTTPS_PROXY`), queries use it but the
+  certificate details in the error dialog are read over a direct connection. They may be missing,
+  or describe the direct path rather than the proxied one.
 - If only some environments fail while the tool searches for the one that accepts your API key,
   the query carries on and those hosts are listed above the form. **View details** opens the same
   dialog for each one.
