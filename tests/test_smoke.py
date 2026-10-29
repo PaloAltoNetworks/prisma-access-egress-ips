@@ -35,3 +35,8 @@ def test_invalid_request_rejected_before_upstream_call():
         json={"api_key": "short", "environment": "prod1", "node_type": "gw"},
     )
     assert resp.status_code == 422
+
+
+def test_api_docs_and_schema_are_not_published():
+    for path in ("/api/docs", "/api/redoc", "/api/openapi.json"):
+        assert client.get(path).status_code == 404

@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
   machine running it and not the rest of the network. See `docs/deployment.md` to share it.
 - The README covers the default setup only, and links to the guides for everything else.
 
+### Removed
+
+- The interactive API documentation (`/api/docs`, `/api/redoc`, `/api/openapi.json`). The
+  `/api/...` endpoints serve the web page only and aren't a supported interface; to automate
+  lookups, use the Prisma Access egress IP API directly.
+
 ## [0.1.0] - 2026-10-29
 
 ### Added
