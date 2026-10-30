@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 TLS_VERIFY_FAILED = "tls_verify_failed"
 
 # OpenSSL verify results (X509_V_ERR_*). These mean the chain ends at an issuer that isn't
-# trusted, so an approval trusts the top certificate presented. Any other failure (expired,
-# not yet valid, hostname mismatch, ...) can only be approved for that exact leaf and host.
+# trusted, so an approval trusts the top certificate presented, if there's a CA above the leaf.
+# Any other failure (expired, not yet valid, hostname mismatch, ...) can only be approved for
+# that exact leaf and host.
 _UNTRUSTED_ISSUER = {
     2,   # unable to get issuer certificate
     18,  # self-signed certificate
@@ -168,7 +169,12 @@ async def _presented_chain(url: str) -> tuple[list[bytes], list[dict]] | None:
 
 def _approval(host: str, err: ssl.SSLCertVerificationError, ders: list[bytes], parsed: list[dict]):
     """What the user may approve for this failure (see _UNTRUSTED_ISSUER), and how to describe it."""
-    if err.verify_code in _UNTRUSTED_ISSUER:
+    # An anchor needs a CA above the leaf: the top certificate must be named as the issuer of
+    # the one below it (the ssl module doesn't expose basicConstraints). A server that sends
+    # only its leaf, or a self-signed leaf, gets a leaf approval for this host instead of
+    # having that certificate trusted for every name it covers.
+    issued_below = len(ders) > 1 and parsed[-1].get("subject") == parsed[-2].get("issuer")
+    if err.verify_code in _UNTRUSTED_ISSUER and issued_below:
         approval = {"kind": "anchor", "pem": ssl.DER_cert_to_PEM_cert(ders[-1])}
         return approval, f"Trust {_name(parsed[-1].get('subject', ()))} for this session"
     approval = {"kind": "leaf", "host": host, "pem": ssl.DER_cert_to_PEM_cert(ders[0])}

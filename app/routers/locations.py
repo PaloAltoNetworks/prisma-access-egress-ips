@@ -1,6 +1,9 @@
 """
 Locations endpoint — lists all Prisma Access locations via the SASE Config API.
 Requires a SASE OAuth bearer token passed in the Authorization header.
+
+Unused by the web page so far, and it takes no certificate approvals: behind TLS inspection
+it needs the CA mounted (docs/custom-ca.md). Accept approvals when the page starts using it.
 """
 
 import re
