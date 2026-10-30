@@ -13,7 +13,7 @@ A browser-based tool for looking up Prisma Access egress IP addresses. It runs a
 You need [Docker](https://docs.docker.com/get-docker/) with Docker Compose.
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/PaloAltoNetworks/prisma-access-egress-ips/main/compose.yml
+curl -fsSLO https://github.com/PaloAltoNetworks/prisma-access-egress-ips/releases/latest/download/compose.yml
 docker compose up -d
 ```
 

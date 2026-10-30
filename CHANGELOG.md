@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 - The page footer shows the running version, `/health` reports it
   (`{"status": "ok", "version": "..."}`), and the app logs it at startup.
+- A `:1` image tag that follows the newest 1.x release, and documentation for running behind
+  an explicit proxy (`HTTPS_PROXY`, `NO_PROXY`).
+- Each GitHub release carries its `compose.yml`, and the Quick Start downloads it from the
+  latest release instead of the `main` branch.
 
 ### Changed
 
@@ -18,6 +22,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The weekly rebuild of the newest release no longer overwrites the `:main` and `:sha-…`
+  image tags.
 - Batch mode fails with an error naming the node types it couldn't fetch, instead of showing
   them as empty. A missing type also left its IPs in lists they should be subtracted from,
   such as load-balancer IPs in `swg`. A rate limit or temporary server error (429, 502, 503,

@@ -4,8 +4,9 @@
 #   docker compose up -d
 #
 # Open http://localhost:8000 once the container starts.
-# :latest is the newest release. To stay on a release line, pin :0.1 (patch updates)
-# or :0.1.0 (exact); see docs/deployment.md.
+# :latest is the newest release, including a future major version that may need changes
+# here. Pin :1 to stay on 1.x, :1.0 for patch releases only, or :1.0.0 for one exact
+# release; see docs/deployment.md.
 
 services:
   app:

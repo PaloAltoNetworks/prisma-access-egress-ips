@@ -4,8 +4,9 @@ name: CI
 #   branch push      tests only
 #   pull request     built, not pushed
 #   push to main     :main, :sha-<commit>, then tag the release if the version is new
-#   v* tag           :X.Y.Z, :X.Y, :latest (only for the highest release)
-#   weekly schedule  rebuild the newest release on fresh base images, same tags
+#   v* tag           :X.Y.Z, :X.Y, :X (only for the highest release in X), :latest (only for
+#                    the highest release)
+#   weekly schedule  rebuild the newest release on fresh base images, same release tags
 
 on:
   push:
@@ -30,6 +31,7 @@ jobs:
       ref: ${{ steps.target.outputs.ref }}
       release: ${{ steps.target.outputs.release }}
       latest: ${{ steps.target.outputs.latest }}
+      major-latest: ${{ steps.target.outputs.major_latest }}
       build: ${{ steps.target.outputs.build }}
     steps:
       - name: Checkout
@@ -48,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           highest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
-          ref="$GITHUB_SHA" release="" latest=false build=false
+          ref="$GITHUB_SHA" release="" latest=false major_latest=false build=false
 
           if [ "$REF_TYPE" = tag ]; then
             if [[ ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -92,12 +94,17 @@ jobs:
             fi
             build=true
             if [ "$tag" = "$highest" ]; then latest=true; fi
+            # :X moves only to the highest release in its major, never back to an older patch
+            major="${release%%.*}"
+            highest_major=$(git tag --list "v$major.[0-9]*.[0-9]*" --sort=-v:refname | head -n1)
+            if [ "$tag" = "$highest_major" ]; then major_latest=true; fi
           fi
 
           {
             echo "ref=$ref"
             echo "release=$release"
             echo "latest=$latest"
+            echo "major_latest=$major_latest"
             echo "build=$build"
           } >> "$GITHUB_OUTPUT"
 
@@ -203,11 +210,14 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           flavor: latest=false
+          # :main and :sha only for pushes: the weekly rebuild also runs as refs/heads/main but
+          # builds the newest release tag, which mustn't overwrite them.
           tags: |
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=sha,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=semver,pattern={{major}},value=${{ env.RELEASE }},enable=${{ needs.resolve.outputs.major-latest == 'true' }}
             type=raw,value=latest,enable=${{ needs.resolve.outputs.latest == 'true' }}
 
       - name: Build and push
@@ -281,6 +291,7 @@ jobs:
           ref: ${{ needs.resolve.outputs.ref }}
           persist-credentials: false
 
+      # compose.yml is attached so the Quick Start pairs each release with its own compose file
       - name: Create or update release from changelog
         env:
           GH_TOKEN: ${{ github.token }}
@@ -293,7 +304,8 @@ jobs:
           python3 .github/scripts/release.py notes "$VERSION" > "$notes"
           if gh release view "v$VERSION" --repo "$REPO" > /dev/null 2>&1; then
             gh release edit "v$VERSION" --repo "$REPO" --notes-file "$notes" --latest="$LATEST"
+            gh release upload "v$VERSION" compose.yml --repo "$REPO" --clobber
           else
-            gh release create "v$VERSION" --repo "$REPO" --verify-tag \
+            gh release create "v$VERSION" compose.yml --repo "$REPO" --verify-tag \
               --title "v$VERSION" --notes-file "$notes" --latest="$LATEST"
           fi

@@ -10,5 +10,5 @@ Include what you found, how to reproduce it, and the version or image tag affect
 
 ## Supported versions
 
-Fixes are made in the newest release only. Pin a release line such as `:0.1` to receive patch
-releases (see [Deployment](./docs/deployment.md#pinning-a-release)).
+Fixes are made in the newest release only. Pin the `:1` release line to receive fixes without
+moving to a new major version (see [Deployment](./docs/deployment.md#pinning-a-release)).

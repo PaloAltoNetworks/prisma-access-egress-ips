@@ -63,8 +63,12 @@ With `docker run`, add `-v "$PWD/certs:/certs:ro"`.
 docker compose logs app | grep -i "CA certificates"
 ```
 
-You should see `Trusting additional CA certificates from /certs/corp-ca.pem`. A line starting with
-`Skipping` means the file isn't valid PEM; re-export it in Base-64/PEM format.
+You should see `Trusting additional CA certificates from /certs/corp-ca.pem`. A line containing
+`Skipping` means the file couldn't be read as PEM: re-export it in Base-64/PEM format, and check
+that it's readable by all users (the container runs as UID 65532).
+
+The certificates are loaded on the first query after the container starts, so run one query
+before checking the log.
 
 ## Notes
 
