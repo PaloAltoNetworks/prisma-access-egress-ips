@@ -4,8 +4,9 @@ name: CI
 #   branch push      tests only
 #   pull request     built, not pushed
 #   push to main     :main, :sha-<commit>, then tag the release if the version is new
-#   v* tag           :X.Y.Z, :X.Y, :latest (only for the highest release)
-#   weekly schedule  rebuild the newest release on fresh base images, same tags
+#   v* tag           :X.Y.Z, :X.Y, :X (only for the highest release in X), :latest (only for
+#                    the highest release)
+#   weekly schedule  rebuild the newest release on fresh base images, same release tags
 
 on:
   push:
@@ -30,6 +31,8 @@ jobs:
       ref: ${{ steps.target.outputs.ref }}
       release: ${{ steps.target.outputs.release }}
       latest: ${{ steps.target.outputs.latest }}
+      major-latest: ${{ steps.target.outputs.major_latest }}
+      minor-latest: ${{ steps.target.outputs.minor_latest }}
       build: ${{ steps.target.outputs.build }}
     steps:
       - name: Checkout
@@ -47,8 +50,14 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          highest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
-          ref="$GITHUB_SHA" release="" latest=false build=false
+          # Highest release tag matching a prefix. Only strict vX.Y.Z tags on main count, so a stray
+          # tag can't stop :latest, :X or :X.Y from moving, or break the weekly rebuild.
+          highest_tag() {
+            git tag --merged origin/main --list "$1" --sort=-v:refname \
+              | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | head -n1 || true
+          }
+          highest=$(highest_tag 'v[0-9]*.[0-9]*.[0-9]*')
+          ref="$GITHUB_SHA" release="" latest=false major_latest=false minor_latest=false build=false
 
           if [ "$REF_TYPE" = tag ]; then
             if [[ ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -92,12 +101,19 @@ jobs:
             fi
             build=true
             if [ "$tag" = "$highest" ]; then latest=true; fi
+            # :X and :X.Y move only to the highest release in their line, never back to an older
+            # one (a re-run or dispatch on an old tag still republishes its own :X.Y.Z)
+            major="${release%%.*}" minor="${release#*.}" minor="${minor%%.*}"
+            if [ "$tag" = "$(highest_tag "v$major.[0-9]*.[0-9]*")" ]; then major_latest=true; fi
+            if [ "$tag" = "$(highest_tag "v$major.$minor.[0-9]*")" ]; then minor_latest=true; fi
           fi
 
           {
             echo "ref=$ref"
             echo "release=$release"
             echo "latest=$latest"
+            echo "major_latest=$major_latest"
+            echo "minor_latest=$minor_latest"
             echo "build=$build"
           } >> "$GITHUB_OUTPUT"
 
@@ -203,11 +219,14 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           flavor: latest=false
+          # :main and :sha only for pushes: the weekly rebuild also runs as refs/heads/main but
+          # builds the newest release tag, which mustn't overwrite them.
           tags: |
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=sha,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE }},enable=${{ needs.resolve.outputs.minor-latest == 'true' }}
+            type=semver,pattern={{major}},value=${{ env.RELEASE }},enable=${{ needs.resolve.outputs.major-latest == 'true' }}
             type=raw,value=latest,enable=${{ needs.resolve.outputs.latest == 'true' }}
 
       - name: Build and push
@@ -281,6 +300,8 @@ jobs:
           ref: ${{ needs.resolve.outputs.ref }}
           persist-credentials: false
 
+      # compose.yml is attached so the Quick Start downloads the compose file of the newest
+      # release rather than unreleased changes on main
       - name: Create or update release from changelog
         env:
           GH_TOKEN: ${{ github.token }}
@@ -293,7 +314,8 @@ jobs:
           python3 .github/scripts/release.py notes "$VERSION" > "$notes"
           if gh release view "v$VERSION" --repo "$REPO" > /dev/null 2>&1; then
             gh release edit "v$VERSION" --repo "$REPO" --notes-file "$notes" --latest="$LATEST"
+            gh release upload "v$VERSION" compose.yml --repo "$REPO" --clobber
           else
-            gh release create "v$VERSION" --repo "$REPO" --verify-tag \
+            gh release create "v$VERSION" compose.yml --repo "$REPO" --verify-tag \
               --title "v$VERSION" --notes-file "$notes" --latest="$LATEST"
           fi
