@@ -36,8 +36,9 @@ services:
 ```
 
 `:1` gets every 1.x release, `:1.0` only patch releases, and `:1.0.0` never changes version.
-`:1` and `:1.0` also get the weekly rebuild while they point at the newest release. Then `docker compose pull && docker compose up -d` updates within that
-line. Read the [Changelog](../CHANGELOG.md) before moving to a new major version.
+`:1` and `:1.0` also get the weekly rebuild while they point at the newest release. Then
+`docker compose pull && docker compose up -d` updates within that line. Read the
+[Changelog](../CHANGELOG.md) before moving to a new major version.
 
 ## Changing the port
 
