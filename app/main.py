@@ -5,6 +5,7 @@ Serves the static web frontend from /web and mounts the API routers under /api.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
 
@@ -20,9 +21,19 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
 )
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("%s %s starting", app.title, app.version)
+    yield
+
+
 app = FastAPI(
     title="Prisma Access Egress IP Utility",
     version=version("prisma-access-egress-ips"),
+    lifespan=lifespan,
     # /api serves the web page only and isn't offered as an interface: no published docs or schema
     docs_url=None,
     redoc_url=None,
@@ -54,4 +65,4 @@ async def index() -> FileResponse:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "version": app.version}

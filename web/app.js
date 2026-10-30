@@ -511,3 +511,12 @@ function toggleApiKey() {
 document.getElementById('apiKey').addEventListener('keydown', e => {
   if (e.key === 'Enter') runQuery();
 });
+
+// ── Running version ────────────────────────────────────────────────────
+// Best effort: if /health can't be reached, the footer simply shows no version.
+fetch('/health')
+  .then(res => res.json())
+  .then(({ version }) => {
+    if (version) document.getElementById('footerVersion').textContent = `v${version}`;
+  })
+  .catch(() => {});
