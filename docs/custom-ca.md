@@ -60,7 +60,7 @@ With `docker run`, add `-v "$PWD/certs:/certs:ro"`.
 ## 3. Confirm it loaded
 
 ```bash
-docker compose logs app | grep -i "CA certificates"
+docker compose logs app | grep -iE "CA certificates|Skipping"
 ```
 
 You should see `Trusting additional CA certificates from /certs/corp-ca.pem`. A line containing

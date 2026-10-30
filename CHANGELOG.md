@@ -12,8 +12,8 @@ All notable changes to this project are documented here. The format follows
   (`{"status": "ok", "version": "..."}`), and the app logs it at startup.
 - A `:1` image tag that follows the newest 1.x release, and documentation for running behind
   an explicit proxy (`HTTPS_PROXY`, `NO_PROXY`).
-- Each GitHub release carries its `compose.yml`, and the Quick Start downloads it from the
-  latest release instead of the `main` branch.
+- The Quick Start downloads `compose.yml` from the latest release, where it's attached,
+  instead of from the `main` branch, which can carry unreleased changes.
 
 ### Changed
 

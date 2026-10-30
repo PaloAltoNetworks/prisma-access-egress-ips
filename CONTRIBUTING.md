@@ -15,7 +15,7 @@ FastAPI worker (app/, Python + httpx)
   └─ GET  /api/locations    → GET  https://api.sase.paloaltonetworks.com/sse/config/v1/locations
 ```
 
-The worker is a stateless proxy. Credentials arrive with each request and leave with the response; nothing is persisted. There are no databases or caches, and all configuration is in `app/config.py`. The only environment variables honoured are the standard proxy settings (`HTTPS_PROXY`, `NO_PROXY`), which httpx reads.
+The worker is a stateless proxy. Credentials arrive with each request and leave with the response; nothing is persisted. There are no databases or caches, and all configuration is in `app/config.py`. The only environment variables honoured are the standard proxy settings (`HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY`, upper or lower case), which httpx reads.
 
 **The web page is the only supported interface.** The `/api/...` endpoints exist to serve it: they're not documented for users, publish no OpenAPI schema, and can change in any release without a version bump to signal it. Users who want to automate lookups call the Prisma Access egress IP API directly. `/api/auth/token` and `/api/locations` are kept for UI features that use SASE credentials.
 
@@ -151,7 +151,7 @@ Both compose files run the container read-only with a `/tmp` tmpfs, all capabili
 | Tag `vX.Y.Z` | `:X.Y.Z`, `:X.Y`, `:X` if it's the highest release in `X`, and `:latest` if it's the highest release |
 | Weekly schedule | newest release rebuilt on fresh base images, same release tags (`:main` and `:sha-…` untouched) |
 
-Versions follow [SemVer](https://semver.org): The supported interface is the web page and the compose files: MAJOR when users have to change something there, MINOR for features, PATCH for fixes. The internal `/api/...` endpoints aren't part of it. `pyproject.toml` is the only version source; the app reads it from package metadata.
+Versions follow [SemVer](https://semver.org). The supported interface is the web page and the compose files: MAJOR when users have to change something there, MINOR for features, PATCH for fixes. The internal `/api/...` endpoints aren't part of it. `pyproject.toml` is the only version source; the app reads it from package metadata.
 
 **To release**, bump `version` in `pyproject.toml` in the PR, and in `CHANGELOG.md` turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`, leaving a fresh empty `[Unreleased]` above it. CI checks that a bumped version has a changelog section and isn't tagged yet. Once the PR is squash-merged, CI tags `vX.Y.Z` on `main` and dispatches the release build. That build checks the tag matches `pyproject.toml`, the changelog section exists and the commit is on `main`, then publishes the images and a GitHub release whose notes are the changelog section, with `compose.yml` attached for the Quick Start. PRs without a bump merge without releasing.
 
