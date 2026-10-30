@@ -49,16 +49,18 @@ def process_api_response(
 
     if not isinstance(api_data, dict):
         raise malformed("not a JSON object")
-    raw_result = api_data.get("result", [])
+    raw_result = api_data.get("result")
     if not isinstance(raw_result, list):
-        raise malformed("'result' is not a list")
+        raise malformed("'result' is missing or not a list")
 
     result = []
     for item in raw_result:
         if not isinstance(item, dict):
             raise malformed("a zone entry is not an object")
         zone = item.get("zone") or "Unknown Zone"
-        addresses = item.get("addresses") or []
+        # Only a missing or null list means none; anything else must be a list of strings
+        addresses = item.get("addresses")
+        addresses = [] if addresses is None else addresses
         if not isinstance(zone, str) or not isinstance(addresses, list) \
                 or not all(isinstance(a, str) for a in addresses):
             raise malformed(f"zone entry '{zone}' has an unexpected format")
@@ -84,17 +86,17 @@ def extract_rn_site_metadata(
     site_details: list[RNSiteDetail] = []
     fqdn_suffix = ""
 
-    raw_result = api_data.get("result", []) if isinstance(api_data, dict) else None
+    raw_result = api_data.get("result", [])
     if not isinstance(raw_result, list):
         return [], ""
 
-    # Site metadata only annotates the IP list, so malformed entries are skipped, not fatal.
+    # process_api_response has already checked the zone entries. Site metadata only annotates
+    # the IP list, so malformed details are skipped, not fatal.
     for item in raw_result:
-        if not isinstance(item, dict):
-            continue
-        zone = item.get("zone", "Unknown Zone")
+        zone = item.get("zone") or "Unknown Zone"
         address_details = item.get("address_details") or []
         if not isinstance(address_details, list):
+            logger.warning("Skipping malformed site details for zone %s in %s/%s", zone, environment, node_type)
             continue
         ip_to_meta: dict[str, dict[str, Any]] = {}
 
@@ -231,23 +233,23 @@ def _raise_for_failures(results: dict[str, Any]) -> None:
     Fail the whole batch if any node type failed. A missing type would otherwise show as
     empty, and leave its IPs in the lists it should be subtracted from (swg_lb from swg).
     """
-    failures = {nt: r for nt, r in results.items() if isinstance(r, BaseException)}
+    failures = {nt: r for nt, r in results.items() if isinstance(r, Exception)}
     if not failures:
         return
+    # Certificate failures keep their structured detail so the page can offer an approval.
     for exc in failures.values():
-        # Certificate failures keep their structured detail so the page can offer an approval.
-        is_cert = isinstance(exc, HTTPException) and isinstance(exc.detail, dict) \
-            and exc.detail.get("code") == TLS_VERIFY_FAILED
-        if is_cert or not isinstance(exc, HTTPException):
+        if isinstance(exc, HTTPException) and isinstance(exc.detail, dict) \
+                and exc.detail.get("code") == TLS_VERIFY_FAILED:
+            raise exc
+    for exc in failures.values():
+        if not isinstance(exc, HTTPException):
             raise exc
     logger.error("Batch failed for %s", ", ".join(failures))
-    first_type, first = next(iter(failures.items()))
+    reasons = "; ".join(f"{nt}: {exc.detail}" for nt, exc in list(failures.items())[:3])
+    timed_out = all(exc.status_code == 504 for exc in failures.values())
     raise HTTPException(
-        status_code=502,
-        detail=(
-            f"Could not fetch {', '.join(failures)}, so the results would be incomplete. "
-            f"{first_type}: {first.detail}"
-        ),
+        status_code=504 if timed_out else 502,
+        detail=f"Could not fetch {', '.join(failures)}, so the results would be incomplete. {reasons}",
     )
 
 
@@ -327,8 +329,13 @@ async def build_batch_response(
             exclusive_results[nt] = fetched.get(nt, [])
 
     # Fetch composite types directly for validation
-    raw_all          = await fetch_prisma_ips(environment, "all",          api_key, approvals=approvals)
-    raw_all_deployed = await fetch_prisma_ips(environment, "all_deployed", api_key, approvals=approvals)
+    composites = ("all", "all_deployed")
+    raw = await asyncio.gather(
+        *[fetch_prisma_ips(environment, nt, api_key, approvals=approvals) for nt in composites],
+        return_exceptions=True,
+    )
+    _raise_for_failures(dict(zip(composites, raw)))
+    raw_all, raw_all_deployed = raw
     direct_all          = process_api_response(raw_all,          environment, "all")
     direct_all_deployed = process_api_response(raw_all_deployed, environment, "all_deployed")
 

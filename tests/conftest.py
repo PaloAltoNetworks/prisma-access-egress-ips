@@ -23,5 +23,6 @@ def upstream(monkeypatch):
 
     monkeypatch.setattr(prisma_client, "_client", fake_client)
     monkeypatch.setattr(prisma_client, "MIN_REQUEST_INTERVAL", 0)
+    monkeypatch.setattr(prisma_client, "_RETRY_DELAY", 0)
     monkeypatch.setattr(tls, "_presented_chain", no_certificate_lookup)
     return state, calls

@@ -42,9 +42,9 @@ async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
     except HTTPException as exc:
         if exc.status_code != 401:
             raise
-        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
+        env, tls_failures, unknown = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
-            raise key_rejected(tls_failures)
+            raise key_rejected(tls_failures, unknown)
         raw = await fetch_prisma_ips(env, req.node_type, req.api_key, approvals=approvals)
 
     data = process_api_response(raw, env, req.node_type)
@@ -77,9 +77,9 @@ async def query_batch(req: BatchQueryRequest) -> BatchQueryResponse:
     # Probe with a single request before fanning out — avoids sending every batch
     # request to the wrong environment when the API key belongs to a different one.
     if await probe_environment(env, req.api_key, approvals) is False:
-        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
+        env, tls_failures, unknown = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
-            raise key_rejected(tls_failures)
+            raise key_rejected(tls_failures, unknown)
 
     results, composite_all, composite_all_deployed, rn_site_details, _ = (
         await build_batch_response(env, req.api_key, approvals)
@@ -111,9 +111,9 @@ async def pre_allocate(req: PreAllocateRequest) -> PreAllocateResponse:
     except HTTPException as exc:
         if exc.status_code != 401:
             raise
-        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
+        env, tls_failures, unknown = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
-            raise key_rejected(tls_failures)
+            raise key_rejected(tls_failures, unknown)
         raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, approvals=approvals)
 
     data = process_api_response(raw, env, "pre_allocate")

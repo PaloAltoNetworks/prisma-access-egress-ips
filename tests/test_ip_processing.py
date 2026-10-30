@@ -66,10 +66,13 @@ def test_build_composite_backfills_ips_only_in_the_direct_response():
 
 @pytest.mark.parametrize("body", [
     ["not", "an", "object"],
+    {"status": "error"},
+    {"result": None},
     {"result": "nope"},
     {"result": ["x"]},
     {"result": [{"zone": "A", "addresses": [1, 2]}]},
     {"result": [{"zone": "A", "addresses": "1.2.3.4"}]},
+    {"result": [{"zone": "A", "addresses": ""}]},
 ])
 def test_malformed_response_is_an_error_not_a_shorter_list(body):
     with pytest.raises(HTTPException) as exc:
@@ -86,7 +89,7 @@ def test_missing_addresses_mean_none():
 
 def test_rn_site_metadata_skips_malformed_entries():
     body = {"result": [
-        "junk",
+        {"zone": "B", "address_details": "junk"},
         {"zone": "A", "address_details": [
             "junk",
             {"address": "1.1.1.1", "addressType": "service_ip", "node_fqdn": "site1.rn.example.com",
@@ -260,3 +263,113 @@ def test_batch_does_not_switch_environment_on_a_server_error(upstream):
 
     assert resp.status_code == 502
     assert hosts == {PROD1}
+
+
+def test_rejection_with_unchecked_environments_is_not_a_plain_rejection(upstream):
+    state, _ = upstream
+    state["handler"] = lambda request: REJECTED if request.url.host == PROD1 else httpx.Response(503, text="down")
+
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert detail.startswith("API key was rejected by every environment that could be checked.")
+    assert "fedramp" in detail and "prod8" in detail
+
+
+# --- Retry ---
+
+def test_one_retry_on_a_rate_limit(upstream):
+    state, _ = upstream
+    replies = [httpx.Response(429, headers={"Retry-After": "0"}), ips("3.3.3.3")]
+    state["handler"] = lambda request: replies.pop(0)
+
+    resp = client.post("/api/ips/query", json=QUERY)
+
+    assert resp.status_code == 200
+    assert resp.json()["data"] == [{"zone": "US East", "addresses": ["3.3.3.3"]}]
+
+
+def test_only_one_retry(upstream):
+    state, _ = upstream
+    count = []
+
+    def handler(request):
+        count.append(1)
+        return httpx.Response(503, text="down")
+
+    state["handler"] = handler
+    assert client.post("/api/ips/query", json=QUERY).status_code == 502
+    assert len(count) == 2
+
+
+def test_retry_delay_is_bounded():
+    from app.services.prisma_client import _retry_delay
+    assert _retry_delay(httpx.Response(429, headers={"Retry-After": "3600"})) == 5.0
+    assert _retry_delay(httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"})) == 1.0
+
+
+# --- Batch: probing and the remaining failure paths ---
+
+def test_batch_proceeds_when_the_probe_is_inconclusive(upstream):
+    state, _ = upstream
+    hosts, probed = set(), []
+
+    def handler(request):
+        hosts.add(request.url.host)
+        if not probed:
+            probed.append(1)
+            return httpx.Response(500, text="probe hiccup")
+        return _batch_handler()(request)
+
+    state["handler"] = handler
+    resp = client.post("/api/ips/batch", json=BATCH)
+
+    assert resp.status_code == 200
+    assert resp.json()["environment"] == "prod1"
+    assert hosts == {PROD1}
+
+
+def test_batch_switches_environment_when_the_key_is_rejected(upstream):
+    state, _ = upstream
+    state["handler"] = lambda request: (
+        _batch_handler()(request) if request.url.host == "api.prod6.datapath.prismaaccess.com" else REJECTED
+    )
+    resp = client.post("/api/ips/batch", json=BATCH)
+    assert resp.status_code == 200
+    assert resp.json()["environment"] == "prod6"
+
+
+def test_batch_fails_when_a_composite_fetch_fails(upstream):
+    state, _ = upstream
+    state["handler"] = _batch_handler({"all": httpx.Response(500, text="boom")})
+    resp = client.post("/api/ips/batch", json=BATCH)
+    assert resp.status_code == 502
+    assert resp.json()["detail"].startswith("Could not fetch all, so the results would be incomplete.")
+
+
+def test_batch_of_timeouts_is_a_504(upstream):
+    state, _ = upstream
+
+    def timeout(request):
+        raise httpx.ReadTimeout("", request=request)
+
+    state["handler"] = _batch_handler({"pt": timeout, "rbi": timeout})
+    resp = client.post("/api/ips/batch", json=BATCH)
+    assert resp.status_code == 504
+    assert "pt: Timed out reaching Prisma Access API." in resp.json()["detail"]
+
+
+def test_unexpected_error_in_a_batch_is_not_swallowed(upstream, monkeypatch):
+    state, _ = upstream
+    state["handler"] = _batch_handler()
+    real = ip_processor.process_api_response
+
+    def broken(api_data, environment, node_type):
+        if node_type == "pt":
+            raise RuntimeError("bug")
+        return real(api_data, environment, node_type)
+
+    monkeypatch.setattr(ip_processor, "process_api_response", broken)
+    resp = TestClient(app, raise_server_exceptions=False).post("/api/ips/batch", json=BATCH)
+    assert resp.status_code == 500

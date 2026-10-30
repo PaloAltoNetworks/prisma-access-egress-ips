@@ -66,6 +66,20 @@ async def _request_error(url: str, exc: httpx.RequestError, what: str) -> HTTPEx
     return HTTPException(status_code=502, detail=f"Could not reach {what}: {reason}")
 
 
+# One retry for responses that usually mean "try again shortly"
+_RETRY_STATUSES = {429, 502, 503, 504}
+_RETRY_DELAY = 1.0      # seconds, when the reply has no usable Retry-After
+_RETRY_MAX_DELAY = 5.0
+
+
+def _retry_delay(response: httpx.Response) -> float:
+    try:
+        delay = float(response.headers.get("Retry-After", _RETRY_DELAY))
+    except ValueError:
+        delay = _RETRY_DELAY
+    return min(max(delay, 0.0), _RETRY_MAX_DELAY)
+
+
 def _excerpt(response: httpx.Response, limit: int = 500) -> Any:
     """An upstream body for an error message: parsed JSON if possible, otherwise text, bounded."""
     try:
@@ -108,9 +122,17 @@ async def fetch_prisma_ips(
     headers = {"header-api-key": api_key, "Content-Type": "application/json"}
 
     try:
-        await _enforce_rate_limit()
         async with _client(url, approvals) as client:
-            response = await client.post(url, headers=headers, json=payload)
+            for attempt in (1, 2):
+                await _enforce_rate_limit()
+                response = await client.post(url, headers=headers, json=payload)
+                if attempt == 1 and response.status_code in _RETRY_STATUSES:
+                    delay = _retry_delay(response)
+                    logger.warning("HTTP %s from Prisma API (%s/%s); retrying in %.1fs",
+                                   response.status_code, environment, node_type, delay)
+                    await asyncio.sleep(delay)
+                    continue
+                break
 
         if _no_ips(response):
             logger.warning("No IPs for %s/%s", environment, node_type)
@@ -228,13 +250,14 @@ async def probe_environment(environment: str, api_key: str, approvals: Approvals
 
 async def find_working_environment(
     api_key: str, exclude: Optional[str] = None, approvals: Approvals = ()
-) -> tuple[Optional[str], list[dict[str, Any]]]:
+) -> tuple[Optional[str], list[dict[str, Any]], list[str]]:
     """
     Probe all environments (except `exclude`) in parallel.
 
-    Returns the first environment that accepts the API key (or None), plus the certificate
-    failures seen along the way so the UI can list them without blocking the query. Only
-    when every probe fails on its certificate is the failure raised for the user to decide.
+    Returns the first environment that accepts the API key (or None), the certificate
+    failures seen along the way so the UI can list them without blocking the query, and the
+    environments whose answer was unknown (unreachable or an unexpected status). Only when
+    every probe fails on its certificate is the failure raised for the user to decide.
     """
     envs = [e for e in ENVIRONMENTS if e != exclude]
     results = await asyncio.gather(
@@ -251,19 +274,28 @@ async def find_working_environment(
         raise HTTPException(status_code=502, detail=tls_failures[0])
     for env, ok in zip(envs, results):
         if ok is True:
-            return env, tls_failures
-    return None, tls_failures
+            return env, tls_failures, []
+    unknown = [env for env, ok in zip(envs, results) if ok is None]
+    return None, tls_failures, unknown
 
 
-def key_rejected(tls_failures: list[dict[str, Any]]) -> HTTPException:
-    """401 for a key no reachable environment accepted, listing any hosts that couldn't be checked."""
-    if not tls_failures:
+def key_rejected(tls_failures: list[dict[str, Any]], unknown: list[str] = ()) -> HTTPException:
+    """
+    For a key no environment accepted. If some couldn't be checked, the key may still belong
+    to one of them, so that's a 502 naming them rather than a 401.
+    """
+    if not tls_failures and not unknown:
         return HTTPException(status_code=401, detail="API key was rejected by all environments.")
+    message = "API key was rejected by every environment that could be checked."
+    if unknown:
+        message += (
+            f" Couldn't check {', '.join(unknown)} (unreachable or returned an error);"
+            " the key may belong to one of them, so try again later."
+        )
+    status = 502 if unknown else 401
+    if not tls_failures:
+        return HTTPException(status_code=status, detail=message)
     return HTTPException(
-        status_code=401,
-        detail={
-            "code": "key_rejected",
-            "message": "API key was rejected by every environment that could be checked.",
-            "tls_failures": tls_failures,
-        },
+        status_code=status,
+        detail={"code": "key_rejected", "message": message, "tls_failures": tls_failures},
     )

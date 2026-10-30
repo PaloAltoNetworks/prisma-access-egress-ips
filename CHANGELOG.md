@@ -6,18 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-
-- Batch mode fails with an error naming the node types it couldn't fetch, instead of showing
-  them as empty. A missing type also left its IPs in lists they should be subtracted from,
-  such as load-balancer IPs in `swg`.
-- When searching for the environment that accepts an API key, only a successful reply counts
-  as a match. A server error from another environment no longer wins the search.
-- Timeouts report "Timed out reaching ..." instead of an empty message, and an unexpected
-  response from the Prisma Access API (not JSON, or in the wrong shape) is reported as an
-  error instead of a server crash or a shorter IP list. Upstream error bodies in messages
-  are truncated.
-
 ### Added
 
 - The page footer shows the running version, `/health` reports it
@@ -27,6 +15,21 @@ All notable changes to this project are documented here. The format follows
 
 - The certificate dialog's chain details are read through the configured proxy
   (`HTTPS_PROXY`), so they describe the path that was rejected.
+
+### Fixed
+
+- Batch mode fails with an error naming the node types it couldn't fetch, instead of showing
+  them as empty. A missing type also left its IPs in lists they should be subtracted from,
+  such as load-balancer IPs in `swg`. A rate limit or temporary server error (429, 502, 503,
+  504) is retried once first.
+- When searching for the environment that accepts an API key, only a successful reply counts
+  as a match. A server error from another environment no longer wins the search, and if some
+  environments couldn't be checked, the error names them instead of saying the key was
+  rejected everywhere.
+- Timeouts report "Timed out reaching ..." instead of an empty message, and an unexpected
+  response from the Prisma Access API (not JSON, or in the wrong shape) is reported as an
+  error instead of a server crash or a shorter IP list. Upstream error bodies in messages
+  are truncated.
 
 ### Security
 
