@@ -41,6 +41,36 @@ app = FastAPI(
 )
 
 
+# The page loads only its own script, styles and images, and talks only to this server.
+# index.html has no inline scripts, handlers or styles, so nothing needs 'unsafe-inline'.
+_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    # The page and its assets revalidate on every load, so an upgraded container never
+    # runs a cached app.js against a newer server. API responses carry credentials' results
+    # and are never stored.
+    is_page = path == "/" or path.startswith("/static/")
+    response.headers["Cache-Control"] = "no-cache" if is_page else "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = _CSP
+    return response
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
     # The default handler echoes each rejected value back, which would put API keys and

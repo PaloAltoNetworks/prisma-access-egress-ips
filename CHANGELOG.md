@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   an explicit proxy (`HTTPS_PROXY`, `NO_PROXY`).
 - The Quick Start downloads `compose.yml` from the latest release, where it's attached,
   instead of from the `main` branch, which can carry unreleased changes.
+- When the certificate dialog offers to trust a CA, it shows that CA's SHA-256 fingerprint,
+  so you can compare it with the one your IT team published.
 
 ### Changed
 
@@ -36,6 +38,8 @@ All notable changes to this project are documented here. The format follows
   response from the Prisma Access API (not JSON, or in the wrong shape) is reported as an
   error instead of a server crash or a shorter IP list. Upstream error bodies in messages
   are truncated.
+- The "Environment auto-corrected to ..." notice is shown; it used to disappear immediately.
+  The loading message is shown while a query runs.
 
 ### Security
 
@@ -51,6 +55,13 @@ All notable changes to this project are documented here. The format follows
   characters. Invalid requests are rejected and never forwarded to Prisma Access.
 - Validation errors no longer echo the rejected values, so an API key or secret can't
   end up in proxy or browser logs.
+- The page sends a Content Security Policy that allows only its own scripts, styles and
+  images (the page no longer uses inline handlers or styles), plus `X-Content-Type-Options`,
+  `Referrer-Policy` and `frame-ancestors 'none'`. The page and its assets revalidate on
+  every load, so an upgraded container never runs a cached script, and API responses are
+  never cached.
+- CSV exports neutralise values that a spreadsheet would run as formulas (starting with
+  `=`, `+`, `-` or `@`), and quote values with line breaks.
 
 ## [0.1.1] - 2026-10-29
 
