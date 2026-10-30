@@ -53,12 +53,39 @@ def _client(url: str, approvals: Approvals, timeout: float = API_TIMEOUT_SECONDS
 
 
 async def _request_error(url: str, exc: httpx.RequestError, what: str) -> HTTPException:
-    """Map a transport failure; certificate failures get the structured opt-out error."""
+    """Map a transport failure; certificate failures get the structured approval error."""
     cert_err = cert_verification_error(exc)
     if cert_err is not None:
         return await verification_failed(url, cert_err)
-    logger.error("Request error reaching %s: %s", what, exc)
-    return HTTPException(status_code=502, detail=f"Could not reach {what}: {exc}")
+    if isinstance(exc, httpx.TimeoutException):
+        logger.error("Timed out reaching %s: %s", what, type(exc).__name__)
+        return HTTPException(status_code=504, detail=f"Timed out reaching {what}.")
+    # Some httpx errors stringify to an empty message
+    reason = str(exc) or type(exc).__name__
+    logger.error("Request error reaching %s: %s", what, reason)
+    return HTTPException(status_code=502, detail=f"Could not reach {what}: {reason}")
+
+
+def _excerpt(response: httpx.Response, limit: int = 500) -> Any:
+    """An upstream body for an error message: parsed JSON if possible, otherwise text, bounded."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = response.text
+    text = body if isinstance(body, str) else str(body)
+    return body if len(text) <= limit else text[:limit] + "…"
+
+
+def _no_ips(response: httpx.Response) -> bool:
+    """The API's 400 reply for a service type with no IPs. It means the key was accepted."""
+    if response.status_code != 400:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("status") == "error" \
+        and "No IP found" in str(body.get("result", ""))
 
 
 # --- Egress IP API ---
@@ -85,26 +112,23 @@ async def fetch_prisma_ips(
         async with _client(url, approvals) as client:
             response = await client.post(url, headers=headers, json=payload)
 
-        if response.status_code == 400:
-            try:
-                body = response.json()
-                if body.get("status") == "error" and "No IP found" in body.get("result", ""):
-                    logger.warning(
-                        "No IPs for %s/%s: %s", environment, node_type, body.get("result")
-                    )
-                    return None
-            except Exception:
-                pass
+        if _no_ips(response):
+            logger.warning("No IPs for %s/%s", environment, node_type)
+            return None
 
         response.raise_for_status()
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            logger.error("Non-JSON response from Prisma API (%s/%s)", environment, node_type)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Prisma Access API returned a response that isn't JSON for {node_type}.",
+            )
 
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
-        try:
-            api_body = exc.response.json()
-        except Exception:
-            api_body = exc.response.text
+        api_body = _excerpt(exc.response)
         logger.error("HTTP %s from Prisma API (%s/%s): %s", status, environment, node_type, api_body)
 
         if status == 401:
@@ -143,7 +167,7 @@ async def fetch_locations(bearer_token: str) -> list[dict[str, Any]]:
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail=f"Locations API error: {exc.response.text}",
+            detail=f"Locations API error: {_excerpt(exc.response)}",
         )
     except httpx.RequestError as exc:
         raise await _request_error(LOCATIONS_API_URL, exc, "Locations API")
@@ -168,7 +192,7 @@ async def fetch_bearer_token(
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail=f"OAuth token error: {exc.response.text}",
+            detail=f"OAuth token error: {_excerpt(exc.response)}",
         )
     except httpx.RequestError as exc:
         raise await _request_error(OAUTH_TOKEN_URL, exc, "OAuth endpoint")
@@ -179,8 +203,9 @@ async def fetch_bearer_token(
 async def probe_environment(environment: str, api_key: str, approvals: Approvals = ()) -> bool | None:
     """
     Lightweight auth probe for one environment.
-    Returns True if the key is accepted (any non-401 HTTP response),
-    False on 401, None if unreachable. Certificate failures raise, so the user can decide.
+    Returns True if the key is accepted (a 2xx, or the 400 that reports no IPs), False on 401,
+    None if unknown (unreachable, or any other status). Certificate failures raise, so the
+    user can decide.
     """
     url = API_URLS[environment]
     payload = NODE_PAYLOADS["gw"]
@@ -188,7 +213,12 @@ async def probe_environment(environment: str, api_key: str, approvals: Approvals
     try:
         async with _client(url, approvals, timeout=10) as client:
             response = await client.post(url, headers=headers, json=payload)
-        return response.status_code != 401
+        if response.status_code == 401:
+            return False
+        if response.is_success or _no_ips(response):
+            return True
+        logger.warning("Probe of %s returned %s; treating it as unknown", environment, response.status_code)
+        return None
     except httpx.RequestError as exc:
         cert_err = cert_verification_error(exc)
         if cert_err is not None:
