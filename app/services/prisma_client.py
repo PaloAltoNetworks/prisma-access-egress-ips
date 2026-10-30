@@ -53,12 +53,53 @@ def _client(url: str, approvals: Approvals, timeout: float = API_TIMEOUT_SECONDS
 
 
 async def _request_error(url: str, exc: httpx.RequestError, what: str) -> HTTPException:
-    """Map a transport failure; certificate failures get the structured opt-out error."""
+    """Map a transport failure; certificate failures get the structured approval error."""
     cert_err = cert_verification_error(exc)
     if cert_err is not None:
         return await verification_failed(url, cert_err)
-    logger.error("Request error reaching %s: %s", what, exc)
-    return HTTPException(status_code=502, detail=f"Could not reach {what}: {exc}")
+    if isinstance(exc, httpx.TimeoutException):
+        logger.error("Timed out reaching %s: %s", what, type(exc).__name__)
+        return HTTPException(status_code=504, detail=f"Timed out reaching {what}.")
+    # Some httpx errors stringify to an empty message
+    reason = str(exc) or type(exc).__name__
+    logger.error("Request error reaching %s: %s", what, reason)
+    return HTTPException(status_code=502, detail=f"Could not reach {what}: {reason}")
+
+
+# One retry for responses that usually mean "try again shortly"
+_RETRY_STATUSES = {429, 502, 503, 504}
+_RETRY_DELAY = 1.0      # seconds, when the reply has no usable Retry-After
+_RETRY_MAX_DELAY = 5.0
+
+
+def _retry_delay(response: httpx.Response) -> float:
+    try:
+        delay = float(response.headers.get("Retry-After", _RETRY_DELAY))
+    except ValueError:
+        delay = _RETRY_DELAY
+    return min(max(delay, 0.0), _RETRY_MAX_DELAY)
+
+
+def _excerpt(response: httpx.Response, limit: int = 500) -> Any:
+    """An upstream body for an error message: parsed JSON if possible, otherwise text, bounded."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = response.text
+    text = body if isinstance(body, str) else str(body)
+    return body if len(text) <= limit else text[:limit] + "…"
+
+
+def _no_ips(response: httpx.Response) -> bool:
+    """The API's 400 reply for a service type with no IPs. It means the key was accepted."""
+    if response.status_code != 400:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("status") == "error" \
+        and "No IP found" in str(body.get("result", ""))
 
 
 # --- Egress IP API ---
@@ -81,30 +122,35 @@ async def fetch_prisma_ips(
     headers = {"header-api-key": api_key, "Content-Type": "application/json"}
 
     try:
-        await _enforce_rate_limit()
         async with _client(url, approvals) as client:
-            response = await client.post(url, headers=headers, json=payload)
+            for attempt in (1, 2):
+                await _enforce_rate_limit()
+                response = await client.post(url, headers=headers, json=payload)
+                if attempt == 1 and response.status_code in _RETRY_STATUSES:
+                    delay = _retry_delay(response)
+                    logger.warning("HTTP %s from Prisma API (%s/%s); retrying in %.1fs",
+                                   response.status_code, environment, node_type, delay)
+                    await asyncio.sleep(delay)
+                    continue
+                break
 
-        if response.status_code == 400:
-            try:
-                body = response.json()
-                if body.get("status") == "error" and "No IP found" in body.get("result", ""):
-                    logger.warning(
-                        "No IPs for %s/%s: %s", environment, node_type, body.get("result")
-                    )
-                    return None
-            except Exception:
-                pass
+        if _no_ips(response):
+            logger.warning("No IPs for %s/%s", environment, node_type)
+            return None
 
         response.raise_for_status()
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            logger.error("Non-JSON response from Prisma API (%s/%s)", environment, node_type)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Prisma Access API returned a response that isn't JSON for {node_type}.",
+            )
 
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
-        try:
-            api_body = exc.response.json()
-        except Exception:
-            api_body = exc.response.text
+        api_body = _excerpt(exc.response)
         logger.error("HTTP %s from Prisma API (%s/%s): %s", status, environment, node_type, api_body)
 
         if status == 401:
@@ -143,7 +189,7 @@ async def fetch_locations(bearer_token: str) -> list[dict[str, Any]]:
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail=f"Locations API error: {exc.response.text}",
+            detail=f"Locations API error: {_excerpt(exc.response)}",
         )
     except httpx.RequestError as exc:
         raise await _request_error(LOCATIONS_API_URL, exc, "Locations API")
@@ -168,7 +214,7 @@ async def fetch_bearer_token(
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail=f"OAuth token error: {exc.response.text}",
+            detail=f"OAuth token error: {_excerpt(exc.response)}",
         )
     except httpx.RequestError as exc:
         raise await _request_error(OAUTH_TOKEN_URL, exc, "OAuth endpoint")
@@ -179,8 +225,9 @@ async def fetch_bearer_token(
 async def probe_environment(environment: str, api_key: str, approvals: Approvals = ()) -> bool | None:
     """
     Lightweight auth probe for one environment.
-    Returns True if the key is accepted (any non-401 HTTP response),
-    False on 401, None if unreachable. Certificate failures raise, so the user can decide.
+    Returns True if the key is accepted (a 2xx, or the 400 that reports no IPs), False on 401,
+    None if unknown (unreachable, or any other status). Certificate failures raise, so the
+    user can decide.
     """
     url = API_URLS[environment]
     payload = NODE_PAYLOADS["gw"]
@@ -188,7 +235,12 @@ async def probe_environment(environment: str, api_key: str, approvals: Approvals
     try:
         async with _client(url, approvals, timeout=10) as client:
             response = await client.post(url, headers=headers, json=payload)
-        return response.status_code != 401
+        if response.status_code == 401:
+            return False
+        if response.is_success or _no_ips(response):
+            return True
+        logger.warning("Probe of %s returned %s; treating it as unknown", environment, response.status_code)
+        return None
     except httpx.RequestError as exc:
         cert_err = cert_verification_error(exc)
         if cert_err is not None:
@@ -198,13 +250,14 @@ async def probe_environment(environment: str, api_key: str, approvals: Approvals
 
 async def find_working_environment(
     api_key: str, exclude: Optional[str] = None, approvals: Approvals = ()
-) -> tuple[Optional[str], list[dict[str, Any]]]:
+) -> tuple[Optional[str], list[dict[str, Any]], list[str]]:
     """
     Probe all environments (except `exclude`) in parallel.
 
-    Returns the first environment that accepts the API key (or None), plus the certificate
-    failures seen along the way so the UI can list them without blocking the query. Only
-    when every probe fails on its certificate is the failure raised for the user to decide.
+    Returns the first environment that accepts the API key (or None), the certificate
+    failures seen along the way so the UI can list them without blocking the query, and the
+    environments whose answer was unknown (unreachable or an unexpected status). Only when
+    every probe fails on its certificate is the failure raised for the user to decide.
     """
     envs = [e for e in ENVIRONMENTS if e != exclude]
     results = await asyncio.gather(
@@ -221,19 +274,28 @@ async def find_working_environment(
         raise HTTPException(status_code=502, detail=tls_failures[0])
     for env, ok in zip(envs, results):
         if ok is True:
-            return env, tls_failures
-    return None, tls_failures
+            return env, tls_failures, []
+    unknown = [env for env, ok in zip(envs, results) if ok is None]
+    return None, tls_failures, unknown
 
 
-def key_rejected(tls_failures: list[dict[str, Any]]) -> HTTPException:
-    """401 for a key no reachable environment accepted, listing any hosts that couldn't be checked."""
-    if not tls_failures:
+def key_rejected(tls_failures: list[dict[str, Any]], unknown: list[str] = ()) -> HTTPException:
+    """
+    For a key no environment accepted. If some couldn't be checked, the key may still belong
+    to one of them, so that's a 502 naming them rather than a 401.
+    """
+    if not tls_failures and not unknown:
         return HTTPException(status_code=401, detail="API key was rejected by all environments.")
+    message = "API key was rejected by every environment that could be checked."
+    if unknown:
+        message += (
+            f" Couldn't check {', '.join(unknown)} (unreachable or returned an error);"
+            " the key may belong to one of them, so try again later."
+        )
+    status = 502 if unknown else 401
+    if not tls_failures:
+        return HTTPException(status_code=status, detail=message)
     return HTTPException(
-        status_code=401,
-        detail={
-            "code": "key_rejected",
-            "message": "API key was rejected by every environment that could be checked.",
-            "tls_failures": tls_failures,
-        },
+        status_code=status,
+        detail={"code": "key_rejected", "message": message, "tls_failures": tls_failures},
     )

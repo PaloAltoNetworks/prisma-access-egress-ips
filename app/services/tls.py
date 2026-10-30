@@ -163,7 +163,7 @@ async def _presented_chain(url: str) -> tuple[list[bytes], list[dict]] | None:
                 parsed = [c.get_info() for c in ssl_object._sslobj.get_unverified_chain()]
         return ders, parsed
     except Exception as exc:
-        logger.warning("Could not read the certificate chain for %s: %s", httpx.URL(url).host, exc)
+        logger.warning("Could not read the certificate chain for %s: %s", httpx.URL(url).host, repr(exc))
         return None
 
 
