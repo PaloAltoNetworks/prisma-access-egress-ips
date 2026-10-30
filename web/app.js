@@ -237,7 +237,8 @@ function confirmApproval(info) {
     const top = info.certificate?.chain?.at(-1);
     const fingerprint = info.approval.kind === 'anchor' && top?.sha256;
     const fingerprintEl = document.getElementById('tlsDialogAnchorFingerprint');
-    fingerprintEl.textContent = fingerprint ? `SHA-256 of ${top.subject}: ${fingerprint}` : '';
+    // Fingerprint first: the subject is chosen by the server and could imitate one
+    fingerprintEl.textContent = fingerprint ? `SHA-256 ${fingerprint} (${top.subject})` : '';
     show(fingerprintEl, !!fingerprint);
   }
   document.getElementById('tlsDialogConfirm').checked = false;
@@ -452,10 +453,13 @@ function downloadTXT() {
   download('egress-ips.txt', lines.join('\n'), 'text/plain');
 }
 
+// Comment lines carry tenant-defined names: a line break in one would become an address line
+const txtComment = text => `# ${String(text).replace(/[\r\n]+/g, ' ')}`;
+
 function appendZoneTXT(lines, zoneData) {
   for (const zone of zoneData) {
     if (!zone.addresses.length) continue;
-    lines.push(`# ${zone.zone}`);
+    lines.push(txtComment(zone.zone));
     for (const addr of zone.addresses) lines.push(addr);
     lines.push('#');
   }
@@ -467,10 +471,10 @@ function appendRNTXT(lines, siteDetails) {
     (byZone[d.zone] ||= []).push(d);
   }
   for (const [zone, details] of Object.entries(byZone)) {
-    lines.push(`# ${zone}`);
+    lines.push(txtComment(zone));
     for (const d of details) {
       const sites = d.sites?.length ? ` — ${d.sites.join(', ')}` : '';
-      lines.push(`# ${d.node_name}${sites}`);
+      lines.push(txtComment(`${d.node_name}${sites}`));
       lines.push(d.address);
     }
     lines.push('#');
@@ -547,7 +551,8 @@ function flashMsg(msg) {
 // with a separator, quote or line break.
 function csvCell(val) {
   let s = String(val ?? '');
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // Leading space and LF too: some spreadsheets skip them before evaluating a formula
+  if (/^[=+\-@\t\r\n ]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -583,7 +588,7 @@ on('jsonBtn', 'click', downloadJSON);
 on('txtBtn', 'click', downloadTXT);
 // Enter in the API key field submits
 on('apiKey', 'keydown', e => {
-  if (e.key === 'Enter') runQuery();
+  if (e.key === 'Enter' && !document.getElementById('queryBtn').disabled) runQuery();
 });
 
 // ── Running version ────────────────────────────────────────────────────

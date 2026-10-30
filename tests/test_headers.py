@@ -36,3 +36,19 @@ def test_security_headers_on_every_response(path):
                       "object-src 'none'"):
         assert directive in csp
     assert "unsafe-inline" not in csp
+
+
+def test_unhandled_error_still_gets_the_headers(monkeypatch):
+    from app.routers import ips
+
+    async def broken(*args, **kwargs):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(ips, "probe_environment", broken)
+    resp = TestClient(app, raise_server_exceptions=False).post(
+        "/api/ips/batch", json={"api_key": "a" * 32, "environment": "prod1"}
+    )
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "Internal Server Error"}
+    assert resp.headers["cache-control"] == "no-store"
+    assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]

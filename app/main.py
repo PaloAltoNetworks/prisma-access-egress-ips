@@ -56,10 +56,7 @@ _CSP = "; ".join([
 ])
 
 
-@app.middleware("http")
-async def security_headers(request: Request, call_next):
-    response = await call_next(request)
-    path = request.url.path
+def _add_headers(path: str, response):
     # The page and its assets revalidate on every load, so an upgraded container never
     # runs a cached app.js against a newer server. API responses carry credentials' results
     # and are never stored.
@@ -69,6 +66,18 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = _CSP
     return response
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    return _add_headers(request.url.path, await call_next(request))
+
+
+@app.exception_handler(Exception)
+async def server_error(request: Request, exc: Exception) -> JSONResponse:
+    # Unhandled errors are answered outside the middleware above, so add the headers here.
+    # Starlette still re-raises the exception afterwards, so it's logged as before.
+    return _add_headers(request.url.path, JSONResponse(status_code=500, content={"detail": "Internal Server Error"}))
 
 
 @app.exception_handler(RequestValidationError)

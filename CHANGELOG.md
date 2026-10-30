@@ -61,7 +61,10 @@ All notable changes to this project are documented here. The format follows
   every load, so an upgraded container never runs a cached script, and API responses are
   never cached.
 - CSV exports neutralise values that a spreadsheet would run as formulas (starting with
-  `=`, `+`, `-` or `@`), and quote values with line breaks.
+  `=`, `+`, `-`, `@`, a space, tab or line break) by prefixing an apostrophe, which some
+  spreadsheets display, and quote values with line breaks. Line breaks in zone and site
+  names no longer split comment lines in TXT exports.
+- Unexpected server errors carry the same security and cache headers as other responses.
 
 ## [0.1.1] - 2026-10-29
 

@@ -25,8 +25,17 @@ def test_page_needs_no_unsafe_inline():
     assert "<script>" not in html and "<style" not in html
 
 
-def test_every_wired_element_exists():
-    # app.js wires handlers by id; a missing id would throw on load and break the whole page.
+def test_every_referenced_element_exists():
+    # app.js looks elements up by id; a missing id would throw and break the page.
     ids = set(re.findall(r'\sid="([^"]+)"', (WEB / "index.html").read_text()))
-    wired = re.findall(r"\bon\('([^']+)'", (WEB / "app.js").read_text())
-    assert wired and set(wired) <= ids
+    js = (WEB / "app.js").read_text()
+    referenced = re.findall(r"\b(?:on|show|getElementById)\('([^']+)'", js)
+    assert referenced and set(referenced) <= ids
+
+
+def test_visibility_relies_on_the_hidden_attribute():
+    # Toggles use the hidden attribute; this rule makes it beat component display rules.
+    assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}", (WEB / "style.css").read_text())
+    js = (WEB / "app.js").read_text()
+    for pattern in (".style.", "cssText", "setAttribute('style'"):
+        assert pattern not in js, f"app.js uses {pattern}; toggle the hidden attribute instead"
