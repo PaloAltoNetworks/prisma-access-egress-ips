@@ -7,15 +7,21 @@ let activeBatchKey = null; // which node-type tab is selected in batch view
 // Certificates approved in the dialog: { approval, label }. Memory only: reloading the page drops them.
 let approvals = [];
 
+// Visibility uses the hidden attribute everywhere (works for SVG too; see [hidden] in style.css)
+function show(target, on) {
+  const node = typeof target === 'string' ? document.getElementById(target) : target;
+  node.toggleAttribute('hidden', !on);
+}
+
 // ── Mode toggle ────────────────────────────────────────────────────────
 function setMode(mode) {
   currentMode = mode;
   document.getElementById('modeSingle').classList.toggle('active', mode === 'single');
   document.getElementById('modeBatch').classList.toggle('active', mode === 'batch');
-  document.getElementById('nodeTypeGroup').style.display = mode === 'single' ? '' : 'none';
+  show('nodeTypeGroup', mode === 'single');
   // Location field only relevant in single mode for gw_pre
   if (mode !== 'single') {
-    document.getElementById('locationGroup').style.display = 'none';
+    show('locationGroup', false);
   } else {
     onNodeTypeChange();
   }
@@ -25,7 +31,7 @@ function setMode(mode) {
 // ── Node type change ───────────────────────────────────────────────────
 function onNodeTypeChange() {
   const isGwPre = document.getElementById('nodeType').value === 'gw_pre';
-  document.getElementById('locationGroup').style.display = isGwPre ? '' : 'none';
+  show('locationGroup', isGwPre);
   if (!isGwPre) {
     document.getElementById('location').value = '';
   }
@@ -48,8 +54,8 @@ async function runQuery() {
       : `Fetching ${nodeType}…`;
 
   for (;;) {
-    setLoading(true, loadingMsg);
     clearResults();
+    setLoading(true, loadingMsg);
     const tlsOpt = approvals.length ? { approved_certificates: approvals.map(a => a.approval) } : {};
 
     try {
@@ -73,7 +79,7 @@ async function runQuery() {
       }
       renderTlsFailures(lastResponse.tls_failures);
       document.getElementById('footerTimestamp').textContent = new Date().toLocaleString();
-      document.getElementById('clearBtn').style.display = '';
+      show('clearBtn', true);
       return;
     } catch (err) {
       setLoading(false);
@@ -141,7 +147,7 @@ function renderApprovals() {
     item.append(label, remove);
     list.append(item);
   }
-  document.getElementById('tlsSessionNotice').style.display = approvals.length ? '' : 'none';
+  show('tlsSessionNotice', approvals.length > 0);
 }
 
 // Certificate fields come from the remote server: render with textContent only.
@@ -149,7 +155,8 @@ function renderTlsCertificate(cert) {
   const setFact = (id, value) => {
     const dd = document.getElementById(id);
     dd.textContent = value || '';
-    dd.style.display = dd.previousElementSibling.style.display = value ? '' : 'none';
+    show(dd, !!value);
+    show(dd.previousElementSibling, !!value);
   };
   setFact('tlsDialogSubject', cert?.subject);
   setFact('tlsDialogAltNames', cert?.alt_names?.join(', '));
@@ -169,8 +176,8 @@ function renderTlsCertificate(cert) {
     item.append(subject, issuer);
     chain.append(item);
   }
-  document.getElementById('tlsDialogChainSection').style.display = cert?.chain?.length ? '' : 'none';
-  document.getElementById('tlsDialogNoDetails').style.display = cert ? 'none' : '';
+  show('tlsDialogChainSection', !!cert?.chain?.length);
+  show('tlsDialogNoDetails', !cert);
 }
 
 // Hosts skipped during environment auto-detection; each can open the full dialog.
@@ -198,7 +205,7 @@ function renderTlsFailures(failures) {
     item.append(host, reason, view);
     list.append(item);
   }
-  document.getElementById('tlsFailures').style.display = failures?.length ? '' : 'none';
+  show('tlsFailures', !!failures?.length);
 }
 
 const APPROVAL_SCOPE = {
@@ -220,12 +227,19 @@ function confirmApproval(info) {
   noApproval.textContent = !info.approval
     ? "This certificate can't be approved because its details couldn't be retrieved."
     : approvable ? '' : 'This certificate is already approved for this session, but verification still failed.';
-  noApproval.style.display = approvable ? 'none' : '';
-  document.getElementById('tlsDialogApproval').style.display = approvable ? '' : 'none';
-  document.getElementById('tlsDialogRetry').style.display = approvable ? '' : 'none';
+  show(noApproval, !approvable);
+  show('tlsDialogApproval', approvable);
+  show('tlsDialogRetry', approvable);
   if (approvable) {
     document.getElementById('tlsDialogApprovalLabel').textContent = info.approval_label;
     document.getElementById('tlsDialogApprovalScope').textContent = APPROVAL_SCOPE[info.approval.kind];
+    // A CA approval trusts the top certificate presented: show its fingerprint, not the leaf's
+    const top = info.certificate?.chain?.at(-1);
+    const fingerprint = info.approval.kind === 'anchor' && top?.sha256;
+    const fingerprintEl = document.getElementById('tlsDialogAnchorFingerprint');
+    // Fingerprint first: the subject is chosen by the server and could imitate one
+    fingerprintEl.textContent = fingerprint ? `SHA-256 ${fingerprint} (${top.subject})` : '';
+    show(fingerprintEl, !!fingerprint);
   }
   document.getElementById('tlsDialogConfirm').checked = false;
   document.getElementById('tlsDialogRetry').disabled = true;
@@ -255,8 +269,8 @@ function renderSingle(res) {
     renderIPTable(res.data, res.node_type);
   }
 
-  document.getElementById('nodeTabs').style.display = 'none';
-  document.getElementById('resultsSection').style.display = '';
+  show('nodeTabs', false);
+  show('resultsSection', true);
 }
 
 // ── Pre-allocate render ────────────────────────────────────────────────
@@ -268,8 +282,8 @@ function renderPreAllocate(res) {
     `gw_pre (pre-allocate) · ${res.environment} · ${res.location} · ${ipCount} IP${ipCount !== 1 ? 's' : ''} · ${zoneCount} zone${zoneCount !== 1 ? 's' : ''}`;
 
   renderIPTable(res.data, 'gw_pre');
-  document.getElementById('nodeTabs').style.display = 'none';
-  document.getElementById('resultsSection').style.display = '';
+  show('nodeTabs', false);
+  show('resultsSection', true);
 }
 
 // ── Batch mode render ──────────────────────────────────────────────────
@@ -277,7 +291,7 @@ function renderBatch(res) {
   // Build tab list: individual node types + composites
   const tabs = document.getElementById('nodeTabs');
   tabs.replaceChildren();
-  tabs.style.display = 'flex';
+  show(tabs, true);
 
   const allKeys = [...Object.keys(res.results), 'all', 'all_deployed'];
 
@@ -291,7 +305,7 @@ function renderBatch(res) {
     btn.className = 'node-tab' + (i === 0 ? ' active' : '');
     btn.dataset.key = key;
     btn.append(key, el('span', { className: 'count', text: String(count) }));
-    btn.onclick = () => selectBatchTab(key, res);
+    btn.addEventListener('click', () => selectBatchTab(key, res));
     tabs.appendChild(btn);
   });
 
@@ -304,7 +318,7 @@ function renderBatch(res) {
     `Batch · ${res.environment} · ${totalIPs} total IPs · ${totalZones} zones`;
 
   selectBatchTab(firstKey, res);
-  document.getElementById('resultsSection').style.display = '';
+  show('resultsSection', true);
 }
 
 function selectBatchTab(key, res) {
@@ -439,10 +453,13 @@ function downloadTXT() {
   download('egress-ips.txt', lines.join('\n'), 'text/plain');
 }
 
+// Comment lines carry tenant-defined names: a line break in one would become an address line
+const txtComment = text => `# ${String(text).replace(/[\r\n]+/g, ' ')}`;
+
 function appendZoneTXT(lines, zoneData) {
   for (const zone of zoneData) {
     if (!zone.addresses.length) continue;
-    lines.push(`# ${zone.zone}`);
+    lines.push(txtComment(zone.zone));
     for (const addr of zone.addresses) lines.push(addr);
     lines.push('#');
   }
@@ -454,10 +471,10 @@ function appendRNTXT(lines, siteDetails) {
     (byZone[d.zone] ||= []).push(d);
   }
   for (const [zone, details] of Object.entries(byZone)) {
-    lines.push(`# ${zone}`);
+    lines.push(txtComment(zone));
     for (const d of details) {
       const sites = d.sites?.length ? ` — ${d.sites.join(', ')}` : '';
-      lines.push(`# ${d.node_name}${sites}`);
+      lines.push(txtComment(`${d.node_name}${sites}`));
       lines.push(d.address);
     }
     lines.push('#');
@@ -487,51 +504,56 @@ function download(filename, content, mime) {
 function clearResults() {
   lastResponse = null;
   activeBatchKey = null;
-  document.getElementById('resultsSection').style.display = 'none';
-  document.getElementById('nodeTabs').style.display = 'none';
-  document.getElementById('clearBtn').style.display = 'none';
-  document.getElementById('tlsFailures').style.display = 'none';
+  show('resultsSection', false);
+  show('nodeTabs', false);
+  show('clearBtn', false);
+  show('tlsFailures', false);
   hideBanner();
+}
+
+// The banner shows one state at a time: loading, error, or a short notice. Each change
+// bumps bannerState, so a notice's timer never hides whatever replaced it.
+let bannerState = 0;
+
+function setBanner(kind, msg, spinner = false) {
+  bannerState++;
+  document.getElementById('statusBanner').className = kind ? `status-banner ${kind}` : 'status-banner';
+  show('statusSpinner', spinner);
+  if (msg !== undefined) document.getElementById('statusMsg').textContent = msg;
 }
 
 function setLoading(on, msg) {
   document.getElementById('queryBtn').disabled = on;
   if (on) {
-    const banner = document.getElementById('statusBanner');
-    banner.className = 'status-banner loading';
-    document.getElementById('statusSpinner').style.display = '';
-    document.getElementById('statusMsg').textContent = msg || 'Loading…';
-  } else {
-    const banner = document.getElementById('statusBanner');
-    if (!banner.classList.contains('error')) {
-      hideBanner();
-    }
+    setBanner('loading', msg || 'Loading…', true);
+  } else if (document.getElementById('statusBanner').classList.contains('loading')) {
+    // Only end the loading state: an error or a notice set meanwhile stays visible
+    hideBanner();
   }
 }
 
 function showError(msg) {
-  const banner = document.getElementById('statusBanner');
-  banner.className = 'status-banner error';
-  document.getElementById('statusSpinner').style.display = 'none';
-  document.getElementById('statusMsg').textContent = msg;
+  setBanner('error', msg);
 }
 
 function hideBanner() {
-  const banner = document.getElementById('statusBanner');
-  banner.className = 'status-banner';
+  setBanner(null);
 }
 
 function flashMsg(msg) {
-  const banner = document.getElementById('statusBanner');
-  banner.className = 'status-banner loading';
-  document.getElementById('statusSpinner').style.display = 'none';
-  document.getElementById('statusMsg').textContent = msg;
-  setTimeout(hideBanner, 2500);
+  setBanner('notice', msg);
+  const state = bannerState;
+  setTimeout(() => { if (bannerState === state) hideBanner(); }, 2500);
 }
 
+// Values come from tenant configuration (site and zone names). A leading = + - @ (or tab/CR)
+// would make a spreadsheet evaluate the cell as a formula, so prefix a quote; quote any value
+// with a separator, quote or line break.
 function csvCell(val) {
-  const s = String(val ?? '');
-  return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = String(val ?? '');
+  // Leading space and LF too: some spreadsheets skip them before evaluating a formula
+  if (/^[=+\-@\t\r\n ]/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 // ── Environment auto-correct ───────────────────────────────────────────
@@ -548,13 +570,25 @@ function toggleApiKey() {
   const input = document.getElementById('apiKey');
   const visible = input.type === 'text';
   input.type = visible ? 'password' : 'text';
-  document.getElementById('eyeOn').style.display  = visible ? '' : 'none';
-  document.getElementById('eyeOff').style.display = visible ? 'none' : '';
+  show('eyeOn', visible);
+  show('eyeOff', !visible);
 }
 
-// ── Enter key submits ──────────────────────────────────────────────────
-document.getElementById('apiKey').addEventListener('keydown', e => {
-  if (e.key === 'Enter') runQuery();
+// ── Event wiring (no inline handlers: the CSP allows only this script) ─
+const on = (id, event, handler) => document.getElementById(id).addEventListener(event, handler);
+on('apiKeyToggle', 'click', toggleApiKey);
+on('modeSingle', 'click', () => setMode('single'));
+on('modeBatch', 'click', () => setMode('batch'));
+on('nodeType', 'change', onNodeTypeChange);
+on('queryBtn', 'click', runQuery);
+on('clearBtn', 'click', clearResults);
+on('copyBtn', 'click', copyIPs);
+on('csvBtn', 'click', downloadCSV);
+on('jsonBtn', 'click', downloadJSON);
+on('txtBtn', 'click', downloadTXT);
+// Enter in the API key field submits
+on('apiKey', 'keydown', e => {
+  if (e.key === 'Enter' && !document.getElementById('queryBtn').disabled) runQuery();
 });
 
 // ── Running version ────────────────────────────────────────────────────

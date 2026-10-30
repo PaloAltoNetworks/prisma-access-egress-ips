@@ -123,20 +123,32 @@ def _name(rdns: tuple) -> str:
     return cn or org or ", ".join(f"{k}={v}" for k, v in fields.items())
 
 
-def describe_chain(parsed: list[dict], leaf_der: bytes) -> dict:
-    """Summarize a presented chain (ssl get_info() dicts, leaf first) for the user to judge."""
+def _fingerprint(der: bytes) -> str:
+    digest = hashlib.sha256(der).hexdigest().upper()
+    return ":".join(digest[i:i + 2] for i in range(0, len(digest), 2))
+
+
+def describe_chain(parsed: list[dict], ders: list[bytes]) -> dict:
+    """
+    Summarize a presented chain (ssl get_info() dicts and DER, leaf first) for the user to
+    judge. Every certificate carries its SHA-256 fingerprint: a CA approval trusts the top
+    one, and the user should be able to compare it with what their IT team published.
+    """
     leaf = parsed[0]
-    digest = hashlib.sha256(leaf_der).hexdigest().upper()
     return {
         "subject": _name(leaf.get("subject", ())),
         "alt_names": [v for k, v in leaf.get("subjectAltName", ()) if k == "DNS"][:10],
         "chain": [
-            {"subject": _name(c.get("subject", ())), "issuer": _name(c.get("issuer", ()))}
-            for c in parsed
+            {
+                "subject": _name(c.get("subject", ())),
+                "issuer": _name(c.get("issuer", ())),
+                "sha256": _fingerprint(der),
+            }
+            for c, der in zip(parsed, ders)
         ],
         "not_before": leaf.get("notBefore"),
         "not_after": leaf.get("notAfter"),
-        "sha256": ":".join(digest[i:i + 2] for i in range(0, len(digest), 2)),
+        "sha256": _fingerprint(ders[0]),
     }
 
 
@@ -189,7 +201,7 @@ async def verification_failed(url: str, err: ssl.SSLCertVerificationError) -> HT
     certificate = approval = label = None
     if presented and presented[0] and len(presented[0]) == len(presented[1]):
         ders, parsed = presented
-        certificate = describe_chain(parsed, ders[0])
+        certificate = describe_chain(parsed, ders)
         approval, label = _approval(host, err, ders, parsed)
     reason = err.verify_message or str(err)
     top = certificate["chain"][-1]["issuer"] if certificate else None

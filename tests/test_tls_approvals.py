@@ -289,6 +289,9 @@ def test_untrusted_issuer_offers_the_top_certificate_as_an_anchor(serve, corp):
 
     assert detail["approval"] == {"kind": "anchor", "pem": issuer.cert_pem.bytes().decode()}
     assert detail["approval_label"].startswith("Trust ")
+    # The dialog shows the fingerprint of the certificate being trusted: the top of the chain
+    top_der = ssl.PEM_cert_to_DER_cert(issuer.cert_pem.bytes().decode())
+    assert detail["certificate"]["chain"][-1]["sha256"] == tls._fingerprint(top_der)
     AnchorApproval.model_validate(detail["approval"])
 
 

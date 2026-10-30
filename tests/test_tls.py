@@ -18,10 +18,14 @@ from app.services import prisma_client, tls
 
 client = TestClient(app)
 
-def _first_root_der() -> bytes:
+def _first_root_der(index: int = 0) -> bytes:
+    """The index-th certificate in certifi's bundle, as DER."""
     bundle = open(certifi.where()).read()
     begin, end = "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"
-    return ssl.PEM_cert_to_DER_cert(bundle[bundle.index(begin): bundle.index(end) + len(end)])
+    start = -1
+    for _ in range(index + 1):
+        start = bundle.index(begin, start + 1)
+    return ssl.PEM_cert_to_DER_cert(bundle[start: bundle.index(end, start) + len(end)])
 
 
 QUERY = {"api_key": "a" * 32, "environment": "prod1", "node_type": "gw"}
@@ -126,9 +130,9 @@ def test_describe_chain_summarizes_every_certificate():
             "issuer": ((("commonName", "Example Corp Root CA"),),),
         },
     ]
-    leaf_der = _first_root_der()
+    leaf_der, ca_der = _first_root_der(), _first_root_der(1)
 
-    cert = tls.describe_chain(parsed, leaf_der)
+    cert = tls.describe_chain(parsed, [leaf_der, ca_der])
 
     assert cert["subject"] == "api.prod.datapath.prismaaccess.com"
     assert cert["alt_names"] == ["api.prod.datapath.prismaaccess.com"]
@@ -138,6 +142,11 @@ def test_describe_chain_summarizes_every_certificate():
     ]
     assert cert["not_after"] == "Jan  1 00:00:00 2027 GMT"
     assert cert["sha256"].replace(":", "") == hashlib.sha256(leaf_der).hexdigest().upper()
+    # Each certificate carries its own fingerprint, so a CA approval can show the CA's
+    assert [link["sha256"].replace(":", "") for link in cert["chain"]] == [
+        hashlib.sha256(der).hexdigest().upper() for der in (leaf_der, ca_der)
+    ]
+    assert cert["chain"][0]["sha256"] != cert["chain"][1]["sha256"]
 
 
 def test_cert_failure_on_one_environment_does_not_hide_a_match(upstream):
