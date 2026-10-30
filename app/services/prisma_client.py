@@ -2,13 +2,14 @@
 Async HTTP client for the Prisma Access egress IP API, SASE locations API, and OAuth.
 
 TLS is always verified (public roots plus any mounted custom CA). A certificate failure is
-returned to the caller as a structured error; retrying without verification happens only
-when the user explicitly sets skip_tls_verify on a request.
+returned to the caller as a structured error; nothing retries on its own. The only extra
+trust comes from certificates the user approved, sent with each request.
 """
 
 import asyncio
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any, Optional
 
 import httpx
@@ -23,7 +24,10 @@ from app.config import (
     NODE_PAYLOADS,
     OAUTH_TOKEN_URL,
 )
-from app.services.tls import TLS_VERIFY_FAILED, cert_verification_error, verification_failed, verify_setting
+from app.models import CertificateApproval
+from app.services.tls import TLS_VERIFY_FAILED, cert_verification_error, context_for, verification_failed
+
+Approvals = Sequence[CertificateApproval]
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +47,9 @@ async def _enforce_rate_limit() -> None:
         _last_request_time = time.monotonic()
 
 
-def _client(skip_tls_verify: bool, timeout: float = API_TIMEOUT_SECONDS) -> httpx.AsyncClient:
-    """Verified TLS unless the user explicitly opted out for this request."""
-    return httpx.AsyncClient(verify=verify_setting(skip_tls_verify), timeout=timeout)
-
-
-def _note_unverified(url: str, skip_tls_verify: bool) -> None:
-    if skip_tls_verify:
-        logger.warning("Certificate verification skipped at the user's request for %s", httpx.URL(url).host)
+def _client(url: str, approvals: Approvals, timeout: float = API_TIMEOUT_SECONDS) -> httpx.AsyncClient:
+    """Verified TLS for url's host, including any certificates the user approved for it."""
+    return httpx.AsyncClient(verify=context_for(httpx.URL(url).host, approvals), timeout=timeout)
 
 
 async def _request_error(url: str, exc: httpx.RequestError, what: str) -> HTTPException:
@@ -69,7 +68,7 @@ async def fetch_prisma_ips(
     node_type: str,
     api_key: str,
     override_payload: Optional[dict[str, Any]] = None,
-    skip_tls_verify: bool = False,
+    approvals: Approvals = (),
 ) -> Optional[dict[str, Any]]:
     """
     POST to the Prisma Access egress IP API and return the raw JSON response.
@@ -80,11 +79,10 @@ async def fetch_prisma_ips(
     url = API_URLS[environment]
     payload = override_payload if override_payload is not None else NODE_PAYLOADS[node_type]
     headers = {"header-api-key": api_key, "Content-Type": "application/json"}
-    _note_unverified(url, skip_tls_verify)
 
     try:
         await _enforce_rate_limit()
-        async with _client(skip_tls_verify) as client:
+        async with _client(url, approvals) as client:
             response = await client.post(url, headers=headers, json=payload)
 
         if response.status_code == 400:
@@ -129,13 +127,12 @@ async def fetch_prisma_ips(
 
 # --- SASE Locations API ---
 
-async def fetch_locations(bearer_token: str, skip_tls_verify: bool = False) -> list[dict[str, Any]]:
+async def fetch_locations(bearer_token: str) -> list[dict[str, Any]]:
     """GET all Prisma Access locations from the SASE Config API."""
     headers = {"Authorization": f"Bearer {bearer_token}", "Content-Type": "application/json"}
-    _note_unverified(LOCATIONS_API_URL, skip_tls_verify)
     try:
         await _enforce_rate_limit()
-        async with _client(skip_tls_verify) as client:
+        async with _client(LOCATIONS_API_URL, ()) as client:
             response = await client.get(LOCATIONS_API_URL, headers=headers)
         response.raise_for_status()
         data = response.json()
@@ -155,12 +152,11 @@ async def fetch_locations(bearer_token: str, skip_tls_verify: bool = False) -> l
 # --- OAuth ---
 
 async def fetch_bearer_token(
-    client_id: str, client_secret: str, tsg_id: str, skip_tls_verify: bool = False
+    client_id: str, client_secret: str, tsg_id: str, approvals: Approvals = ()
 ) -> dict[str, Any]:
     """Exchange client credentials for a SASE OAuth bearer token."""
-    _note_unverified(OAUTH_TOKEN_URL, skip_tls_verify)
     try:
-        async with _client(skip_tls_verify) as client:
+        async with _client(OAUTH_TOKEN_URL, approvals) as client:
             response = await client.post(
                 OAUTH_TOKEN_URL,
                 auth=(client_id, client_secret),
@@ -180,7 +176,7 @@ async def fetch_bearer_token(
 
 # --- Environment auto-detection ---
 
-async def probe_environment(environment: str, api_key: str, skip_tls_verify: bool = False) -> bool | None:
+async def probe_environment(environment: str, api_key: str, approvals: Approvals = ()) -> bool | None:
     """
     Lightweight auth probe for one environment.
     Returns True if the key is accepted (any non-401 HTTP response),
@@ -190,7 +186,7 @@ async def probe_environment(environment: str, api_key: str, skip_tls_verify: boo
     payload = NODE_PAYLOADS["gw"]
     headers = {"header-api-key": api_key, "Content-Type": "application/json"}
     try:
-        async with _client(skip_tls_verify, timeout=10) as client:
+        async with _client(url, approvals, timeout=10) as client:
             response = await client.post(url, headers=headers, json=payload)
         return response.status_code != 401
     except httpx.RequestError as exc:
@@ -201,7 +197,7 @@ async def probe_environment(environment: str, api_key: str, skip_tls_verify: boo
 
 
 async def find_working_environment(
-    api_key: str, exclude: Optional[str] = None, skip_tls_verify: bool = False
+    api_key: str, exclude: Optional[str] = None, approvals: Approvals = ()
 ) -> tuple[Optional[str], list[dict[str, Any]]]:
     """
     Probe all environments (except `exclude`) in parallel.
@@ -212,7 +208,7 @@ async def find_working_environment(
     """
     envs = [e for e in ENVIRONMENTS if e != exclude]
     results = await asyncio.gather(
-        *[probe_environment(e, api_key, skip_tls_verify) for e in envs], return_exceptions=True
+        *[probe_environment(e, api_key, approvals) for e in envs], return_exceptions=True
     )
     tls_failures: list[dict[str, Any]] = []
     for result in results:

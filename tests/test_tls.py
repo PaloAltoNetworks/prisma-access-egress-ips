@@ -1,6 +1,6 @@
 """
-Certificate verification: failures surface as a structured error, nothing retries without
-verification on its own, and the opt-out flag reaches the HTTP client only when sent.
+Certificate verification: failures surface as a structured error, nothing retries on its
+own, and approved certificates reach the HTTP client only when the browser sends them.
 """
 
 import hashlib
@@ -10,6 +10,7 @@ import ssl
 import certifi
 import httpx
 import pytest
+import trustme
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -28,25 +29,25 @@ QUERY = {"api_key": "a" * 32, "environment": "prod1", "node_type": "gw"}
 
 def _cert_failure(request: httpx.Request) -> httpx.Response:
     err = ssl.SSLCertVerificationError(1, "certificate verify failed")
-    err.verify_message = "self-signed certificate in certificate chain"
+    err.verify_code, err.verify_message = 19, "self-signed certificate in certificate chain"
     raise httpx.ConnectError("certificate verify failed", request=request) from err
 
 
 @pytest.fixture
 def upstream(monkeypatch):
-    """Route outbound calls to a handler and record each call's skip_tls_verify value."""
-    calls: list[bool] = []
+    """Route outbound calls to a handler and record the approvals each call was given."""
+    calls: list[list] = []
     state = {"handler": lambda request: httpx.Response(200, json={"status": "success", "result": []})}
 
-    def fake_client(skip_tls_verify: bool, timeout: float = 30) -> httpx.AsyncClient:
-        calls.append(skip_tls_verify)
+    def fake_client(url: str, approvals, timeout: float = 30) -> httpx.AsyncClient:
+        calls.append(list(approvals))
         return httpx.AsyncClient(transport=httpx.MockTransport(lambda r: state["handler"](r)))
 
-    async def no_certificate_lookup(host: str, port: int) -> None:
+    async def no_certificate_lookup(url: str) -> None:
         return None
 
     monkeypatch.setattr(prisma_client, "_client", fake_client)
-    monkeypatch.setattr(tls.asyncio, "to_thread", lambda fn, *a: no_certificate_lookup(*a))
+    monkeypatch.setattr(tls, "_presented_chain", no_certificate_lookup)
     return state, calls
 
 
@@ -61,7 +62,7 @@ def test_cert_failure_returns_structured_error_without_retry(upstream):
     assert detail["code"] == tls.TLS_VERIFY_FAILED
     assert detail["host"] == "api.prod.datapath.prismaaccess.com"
     assert detail["reason"] == "self-signed certificate in certificate chain"
-    assert calls == [False]
+    assert calls == [[]]
 
 
 def test_batch_probe_cert_failure_is_not_treated_as_unreachable(upstream):
@@ -72,16 +73,17 @@ def test_batch_probe_cert_failure_is_not_treated_as_unreachable(upstream):
 
     assert resp.status_code == 502
     assert resp.json()["detail"]["code"] == tls.TLS_VERIFY_FAILED
-    assert calls == [False]
+    assert calls == [[]]
 
 
-def test_opt_out_is_passed_through_per_request(upstream):
+def test_approvals_are_passed_through_per_request(upstream):
     _, calls = upstream
+    approval = {"kind": "anchor", "pem": trustme.CA().cert_pem.bytes().decode()}
 
-    assert client.post("/api/ips/query", json={**QUERY, "skip_tls_verify": True}).status_code == 200
+    assert client.post("/api/ips/query", json={**QUERY, "approved_certificates": [approval]}).status_code == 200
     assert client.post("/api/ips/query", json=QUERY).status_code == 200
 
-    assert calls == [True, False]
+    assert [[a.model_dump() for a in c] for c in calls] == [[approval], []]
 
 
 def test_other_connect_errors_are_plain_502(upstream):
@@ -97,9 +99,8 @@ def test_other_connect_errors_are_plain_502(upstream):
     assert isinstance(resp.json()["detail"], str)
 
 
-def test_verify_setting():
-    assert tls.verify_setting(True) is False
-    assert isinstance(tls.verify_setting(False), ssl.SSLContext)
+def test_no_approvals_uses_the_verified_context():
+    assert tls.context_for("api.example.com") is tls.verified_context()
 
 
 def test_custom_ca_dir_adds_certificates_and_skips_bad_files(tmp_path, monkeypatch):

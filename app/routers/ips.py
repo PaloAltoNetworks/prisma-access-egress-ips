@@ -35,17 +35,17 @@ router = APIRouter(prefix="/api/ips", tags=["ips"])
 async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
     """Fetch egress IPs for a single node type."""
     env = req.environment
-    skip = req.skip_tls_verify
+    approvals = req.approved_certificates
     tls_failures: list[dict] = []
     try:
-        raw = await fetch_prisma_ips(env, req.node_type, req.api_key, skip_tls_verify=skip)
+        raw = await fetch_prisma_ips(env, req.node_type, req.api_key, approvals=approvals)
     except HTTPException as exc:
         if exc.status_code != 401:
             raise
-        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, skip_tls_verify=skip)
+        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
             raise key_rejected(tls_failures)
-        raw = await fetch_prisma_ips(env, req.node_type, req.api_key, skip_tls_verify=skip)
+        raw = await fetch_prisma_ips(env, req.node_type, req.api_key, approvals=approvals)
 
     data = process_api_response(raw, env, req.node_type)
 
@@ -71,18 +71,18 @@ async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
 async def query_batch(req: BatchQueryRequest) -> BatchQueryResponse:
     """Fetch all node types concurrently, compute exclusive and composite lists."""
     env = req.environment
-    skip = req.skip_tls_verify
+    approvals = req.approved_certificates
     tls_failures: list[dict] = []
 
     # Probe with a single request before fanning out — avoids sending every batch
     # request to the wrong environment when the API key belongs to a different one.
-    if await probe_environment(env, req.api_key, skip) is False:
-        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, skip_tls_verify=skip)
+    if await probe_environment(env, req.api_key, approvals) is False:
+        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
             raise key_rejected(tls_failures)
 
     results, composite_all, composite_all_deployed, rn_site_details, _ = (
-        await build_batch_response(env, req.api_key, skip)
+        await build_batch_response(env, req.api_key, approvals)
     )
 
     return BatchQueryResponse(
@@ -104,17 +104,17 @@ async def pre_allocate(req: PreAllocateRequest) -> PreAllocateResponse:
         "serviceType": "gp_gateway",
         "location": [req.location],
     }
-    skip = req.skip_tls_verify
+    approvals = req.approved_certificates
     tls_failures: list[dict] = []
     try:
-        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, skip_tls_verify=skip)
+        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, approvals=approvals)
     except HTTPException as exc:
         if exc.status_code != 401:
             raise
-        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, skip_tls_verify=skip)
+        env, tls_failures = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
             raise key_rejected(tls_failures)
-        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, skip_tls_verify=skip)
+        raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, approvals=approvals)
 
     data = process_api_response(raw, env, "pre_allocate")
 

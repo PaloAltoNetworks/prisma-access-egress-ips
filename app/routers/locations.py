@@ -1,6 +1,9 @@
 """
 Locations endpoint — lists all Prisma Access locations via the SASE Config API.
 Requires a SASE OAuth bearer token passed in the Authorization header.
+
+Unused by the web page so far, and it takes no certificate approvals: behind TLS inspection
+it needs the CA mounted (docs/custom-ca.md). Accept approvals when the page starts using it.
 """
 
 import re
@@ -17,7 +20,6 @@ router = APIRouter(prefix="/api/locations", tags=["locations"])
 @router.get("")
 async def get_locations(
     authorization: str = Header(..., alias="Authorization"),
-    skip_tls_verify: bool = False,
 ) -> list[dict]:
     """
     Fetch all Prisma Access locations.
@@ -28,4 +30,4 @@ async def get_locations(
     token = authorization[7:].strip()
     if not _VALID_TOKEN.match(token):
         raise HTTPException(status_code=401, detail="Invalid bearer token format")
-    return await fetch_locations(token, skip_tls_verify)
+    return await fetch_locations(token)

@@ -4,8 +4,8 @@
 let currentMode = 'single';
 let lastResponse = null;   // raw API response stored for export
 let activeBatchKey = null; // which node-type tab is selected in batch view
-// Set only from the certificate dialog. Memory only: reloading the page turns verification back on.
-let skipTlsForSession = false;
+// Certificates approved in the dialog: { approval, label }. Memory only: reloading the page drops them.
+let approvals = [];
 
 // ── Mode toggle ────────────────────────────────────────────────────────
 function setMode(mode) {
@@ -50,7 +50,7 @@ async function runQuery() {
   for (;;) {
     setLoading(true, loadingMsg);
     clearResults();
-    const tlsOpt = skipTlsForSession ? { skip_tls_verify: true } : {};
+    const tlsOpt = approvals.length ? { approved_certificates: approvals.map(a => a.approval) } : {};
 
     try {
       if (currentMode === 'single') {
@@ -77,8 +77,8 @@ async function runQuery() {
       return;
     } catch (err) {
       setLoading(false);
-      if (err.tls && !skipTlsForSession && await confirmSkipTls(err.tls)) {
-        setSkipTlsForSession(true);
+      if (err.tls && await confirmApproval(err.tls)) {
+        addApproval(err.tls);
         continue;
       }
       renderTlsFailures(err.tlsFailures);
@@ -113,9 +113,35 @@ async function apiFetch(path, body) {
 }
 
 // ── Certificate verification failure ──────────────────────────────────
-function setSkipTlsForSession(on) {
-  skipTlsForSession = on;
-  document.getElementById('tlsSessionNotice').style.display = on ? '' : 'none';
+function isApproved(approval) {
+  return approvals.some(({ approval: a }) =>
+    a.kind === approval.kind && a.pem === approval.pem && a.host === approval.host);
+}
+
+function addApproval(info) {
+  approvals.push({ approval: info.approval, label: info.approval_label });
+  renderApprovals();
+}
+
+function renderApprovals() {
+  const list = document.getElementById('tlsApprovalsList');
+  list.replaceChildren();
+  for (const entry of approvals) {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = entry.label;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'link-btn';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      approvals = approvals.filter(a => a !== entry);
+      renderApprovals();
+    });
+    item.append(label, remove);
+    list.append(item);
+  }
+  document.getElementById('tlsSessionNotice').style.display = approvals.length ? '' : 'none';
 }
 
 // Certificate fields come from the remote server: render with textContent only.
@@ -164,8 +190,8 @@ function renderTlsFailures(failures) {
     view.className = 'link-btn';
     view.textContent = 'View details';
     view.addEventListener('click', async () => {
-      if (await confirmSkipTls(failure)) {
-        setSkipTlsForSession(true);
+      if (await confirmApproval(failure)) {
+        addApproval(failure);
         runQuery();
       }
     });
@@ -175,13 +201,32 @@ function renderTlsFailures(failures) {
   document.getElementById('tlsFailures').style.display = failures?.length ? '' : 'none';
 }
 
-// Resolves true only if the user ticks the acknowledgement and chooses to continue.
-function confirmSkipTls(info) {
+const APPROVAL_SCOPE = {
+  anchor: 'Certificates it issues are accepted for any host until this page is reloaded or closed. Hostnames and expiry dates are still checked.',
+  leaf: 'Only this exact certificate is accepted, and only for this host, until this page is reloaded or closed.',
+};
+
+// Resolves true only if the certificate can be approved and the user ticks the
+// acknowledgement and chooses to retry.
+function confirmApproval(info) {
   const dialog = document.getElementById('tlsDialog');
   document.getElementById('tlsDialogMessage').textContent = info.message;
   document.getElementById('tlsDialogHost').textContent = info.host;
   document.getElementById('tlsDialogReason').textContent = info.reason;
   renderTlsCertificate(info.certificate);
+
+  const approvable = info.approval && !isApproved(info.approval);
+  const noApproval = document.getElementById('tlsDialogNoApproval');
+  noApproval.textContent = !info.approval
+    ? "This certificate can't be approved because its details couldn't be retrieved."
+    : approvable ? '' : 'This certificate is already approved for this session, but verification still failed.';
+  noApproval.style.display = approvable ? 'none' : '';
+  document.getElementById('tlsDialogApproval').style.display = approvable ? '' : 'none';
+  document.getElementById('tlsDialogRetry').style.display = approvable ? '' : 'none';
+  if (approvable) {
+    document.getElementById('tlsDialogApprovalLabel').textContent = info.approval_label;
+    document.getElementById('tlsDialogApprovalScope').textContent = APPROVAL_SCOPE[info.approval.kind];
+  }
   document.getElementById('tlsDialogConfirm').checked = false;
   document.getElementById('tlsDialogRetry').disabled = true;
   dialog.returnValue = '';

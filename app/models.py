@@ -3,9 +3,10 @@ Pydantic models for request validation and response serialization.
 """
 
 from typing import Annotated, Any, Literal, Optional
-from pydantic import BaseModel, ConfigDict, StrictBool, StringConstraints, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator
 from app.config import ENVIRONMENTS, NODE_PAYLOADS
 import re
+import ssl
 
 # --- Validation patterns ---
 _VALID_API_KEY = re.compile(r'^[A-Za-z0-9\-_+=/.]{10,512}$')
@@ -18,15 +19,49 @@ _Credential = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 _TsgId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r'^[0-9]{1,20}$')]
 
 
-# --- Shared request base ---
-class OutboundRequest(BaseModel):
+def _single_certificate(v: str) -> str:
+    """Exactly one parseable PEM certificate, returned in canonical form."""
+    if v.count("-----BEGIN CERTIFICATE-----") != 1:
+        raise ValueError("Expected exactly one PEM certificate")
+    try:
+        pem = ssl.DER_cert_to_PEM_cert(ssl.PEM_cert_to_DER_cert(v.strip()))
+        ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations(cadata=pem)
+    except (ValueError, ssl.SSLError):
+        raise ValueError("Not a valid PEM certificate")
+    return pem
+
+
+_Pem = Annotated[str, StringConstraints(max_length=16384), AfterValidator(_single_certificate)]
+_Host = Annotated[str, StringConstraints(to_lower=True, pattern=r'^[A-Za-z0-9.\-]{1,253}$')]
+
+
+class _Strict(BaseModel):
     # The server is authoritative: a field it doesn't define is an error, not ignored.
     model_config = ConfigDict(extra="forbid")
 
-    # Set by the browser for the rest of its session once the user, shown a certificate
-    # failure, opts out. The server keeps no state: each request carries the flag.
-    # Strict, so only a JSON boolean (not "yes" or 1) can turn verification off.
-    skip_tls_verify: StrictBool = False
+
+# --- Certificates the user approved after a verification failure ---
+class AnchorApproval(_Strict):
+    """A CA trusted in addition to the usual roots, for every host. Hostname and expiry are still checked."""
+    kind: Literal["anchor"]
+    pem: _Pem
+
+
+class LeafApproval(_Strict):
+    """This exact certificate, for this host only. Nothing else is trusted for the host."""
+    kind: Literal["leaf"]
+    host: _Host
+    pem: _Pem
+
+
+CertificateApproval = Annotated[AnchorApproval | LeafApproval, Field(discriminator="kind")]
+
+
+# --- Shared request base ---
+class OutboundRequest(_Strict):
+    # The browser keeps approvals in page memory for the session and sends them with each
+    # request; the server keeps no state. Each comes from a verification failure's detail.
+    approved_certificates: list[CertificateApproval] = Field(default_factory=list, max_length=20)
 
 
 class EnvironmentMixin(OutboundRequest):

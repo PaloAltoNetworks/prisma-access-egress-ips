@@ -11,15 +11,25 @@ All notable changes to this project are documented here. The format follows
 - The page footer shows the running version, `/health` reports it
   (`{"status": "ok", "version": "..."}`), and the app logs it at startup.
 
+### Changed
+
+- The certificate dialog's chain details are read through the configured proxy
+  (`HTTPS_PROXY`), so they describe the path that was rejected.
+
 ### Security
 
+- Approving a certificate after a verification failure trusts only that certificate, instead
+  of turning verification off for every host. For an untrusted issuer, the top certificate
+  presented becomes an extra trusted CA, and hostnames and expiry are still checked. For
+  any other failure, only that exact certificate is accepted, and only for that host.
+  Approvals are listed under the Query button and can be removed. `skip_tls_verify` is
+  removed from the internal API.
 - Requests are validated strictly: unknown fields are rejected, the API key and service
   account credentials have maximum lengths, the TSG ID must be numeric, and the bearer
   token for the locations endpoint must be a well-formed token of at most 8192
   characters. Invalid requests are rejected and never forwarded to Prisma Access.
 - Validation errors no longer echo the rejected values, so an API key or secret can't
   end up in proxy or browser logs.
-- `skip_tls_verify` accepts only a JSON boolean; values such as `"yes"` or `1` are rejected.
 
 ## [0.1.1] - 2026-10-29
 
