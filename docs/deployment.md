@@ -82,4 +82,5 @@ docker compose -f compose.build.yml up --build -d
 - Distroless Python image running as a non-root user (UID 65532), with no shell.
 - Read-only filesystem with a temporary `/tmp`, all Linux capabilities dropped and
   `no-new-privileges` (set in both compose files).
-- A health check on `/health`; `docker compose ps` shows its status.
+- A health check on `/health`; `docker compose ps` shows its status. `/health` also
+  reports the running version, which the page footer shows.

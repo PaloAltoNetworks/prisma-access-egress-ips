@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The page footer shows the running version, `/health` reports it
+  (`{"status": "ok", "version": "..."}`), and the app logs it at startup.
+
 ### Security
 
 - Requests are validated strictly: unknown fields are rejected, the API key and service
