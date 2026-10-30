@@ -8,9 +8,10 @@ import logging
 from importlib.metadata import version
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.routers import auth, ips, locations
 
@@ -27,6 +28,15 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # The default handler echoes each rejected value back, which would put API keys and
+    # secrets in proxy and browser logs. Keep only where and why; the UI shows msg.
+    detail = [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": detail})
+
 
 app.include_router(ips.router)
 app.include_router(locations.router)

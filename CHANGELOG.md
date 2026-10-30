@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Requests are validated strictly: unknown fields are rejected, the API key and service
+  account credentials have maximum lengths, the TSG ID must be numeric, and the bearer
+  token for the locations endpoint must be a well-formed token of at most 8192
+  characters. Invalid requests are rejected and never forwarded to Prisma Access.
+- Validation errors no longer echo the rejected values, so an API key or secret can't
+  end up in proxy or browser logs.
+- `skip_tls_verify` accepts only a JSON boolean; values such as `"yes"` or `1` are rejected.
+
 ## [0.1.1] - 2026-10-29
 
 ### Added
