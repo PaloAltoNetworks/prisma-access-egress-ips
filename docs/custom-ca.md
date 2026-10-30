@@ -78,12 +78,18 @@ You should see `Trusting additional CA certificates from /certs/corp-ca.pem`. A 
   shows usually explains the failure: an expired certificate, a hostname mismatch, or a wrong
   clock on the machine running the container. If you don't recognize the CA, the connection
   may be intercepted.
-- If you route the container through an explicit proxy (`HTTPS_PROXY`), queries use it but the
-  certificate details in the error dialog are read over a direct connection. They may be missing,
-  or describe the direct path rather than the proxied one.
 - If only some environments fail while the tool searches for the one that accepts your API key,
   the query carries on and those hosts are listed above the form. **View details** opens the same
   dialog for each one.
-- If you can't get the CA, the dialog offers to skip certificate verification for the rest of
-  the browser session (until the page is reloaded or closed). Only do that on a network you
-  trust: your API key or client secret is sent over connections whose identity isn't verified.
+- If you can't get the CA, the dialog offers to trust the certificate it shows for the rest of
+  the browser session (until the page is reloaded or closed). What it trusts depends on the
+  failure:
+  - **Untrusted issuer** (for example `self-signed certificate in certificate chain`): the last
+    certificate in the chain, usually your organization's decryption CA. It's accepted for every
+    host, and hostnames and expiry dates are still checked.
+  - **Anything else** (for example an expired certificate or a hostname mismatch): only that exact
+    certificate, and only for that host.
+
+  A different certificate or host shows the dialog again. Approvals are listed under the
+  **Query** button, where you can remove them. Only approve a certificate you recognize: your API
+  key or client secret is sent to whoever holds it.

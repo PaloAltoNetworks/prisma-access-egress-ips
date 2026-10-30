@@ -94,8 +94,8 @@
       <button class="btn btn-primary" id="queryBtn" onclick="runQuery()">Query</button>
       <button class="btn btn-ghost" id="clearBtn" onclick="clearResults()" style="display:none;">Clear</button>
       <div class="tls-session-notice" id="tlsSessionNotice" style="display:none;">
-        <span>Certificate verification is off for this session.</span>
-        <button class="link-btn" type="button" onclick="setSkipTlsForSession(false)">Turn it back on</button>
+        <span>Certificates approved for this session:</span>
+        <ul class="tls-approvals-list" id="tlsApprovalsList"></ul>
       </div>
     </div>
   </div>
@@ -163,13 +163,14 @@
       hostname mismatch, or a wrong clock on the machine running this tool.
       If you don't recognize the CA, the connection may be intercepted: don't continue.
     </p>
-    <label class="tls-dialog-check">
+    <p class="tls-dialog-note" id="tlsDialogNoApproval"></p>
+    <label class="tls-dialog-check" id="tlsDialogApproval">
       <input type="checkbox" id="tlsDialogConfirm">
-      <span>Skip certificate verification for the rest of this session, until this page is reloaded or closed. Your credentials will be sent over connections whose identity is not verified.</span>
+      <span><strong id="tlsDialogApprovalLabel"></strong>. <span id="tlsDialogApprovalScope"></span></span>
     </label>
     <div class="tls-dialog-actions">
       <button class="btn btn-ghost" value="cancel">Cancel</button>
-      <button class="btn btn-primary" value="retry" id="tlsDialogRetry" disabled>Continue without verification</button>
+      <button class="btn btn-primary" value="retry" id="tlsDialogRetry" disabled>Trust and retry</button>
     </div>
   </form>
 </dialog>

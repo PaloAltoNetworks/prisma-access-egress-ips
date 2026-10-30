@@ -16,7 +16,7 @@ from app.config import (
     MAX_CONCURRENT_REQUESTS,
 )
 from app.models import RNSiteDetail, ZoneData
-from app.services.prisma_client import fetch_prisma_ips
+from app.services.prisma_client import Approvals, fetch_prisma_ips
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ def build_composite(
 async def fetch_all_node_types(
     environment: str,
     api_key: str,
-    skip_tls_verify: bool = False,
+    approvals: Approvals = (),
 ) -> tuple[dict[str, list[ZoneData]], dict[str, Any]]:
     """
     Fetch all individual node types concurrently (respecting MAX_CONCURRENT_REQUESTS).
@@ -224,7 +224,7 @@ async def fetch_all_node_types(
 
     async def _fetch_one(node_type: str) -> tuple[str, list[ZoneData], Optional[dict[str, Any]]]:
         async with semaphore:
-            raw = await fetch_prisma_ips(environment, node_type, api_key, skip_tls_verify=skip_tls_verify)
+            raw = await fetch_prisma_ips(environment, node_type, api_key, approvals=approvals)
             processed = process_api_response(raw, environment, node_type)
             raw_for_rn = raw if node_type in ("rn", "rn_all") else None
             return node_type, processed, raw_for_rn
@@ -250,7 +250,7 @@ async def fetch_all_node_types(
 async def build_batch_response(
     environment: str,
     api_key: str,
-    skip_tls_verify: bool = False,
+    approvals: Approvals = (),
 ) -> tuple[
     dict[str, list[ZoneData]],  # exclusive results per node type
     list[ZoneData],              # composite all
@@ -262,7 +262,7 @@ async def build_batch_response(
     Full batch pipeline: fetch all node types, compute exclusives, build composites.
     Mirrors the CLI's process_all_node_types_batch but returns data instead of writing files.
     """
-    fetched, raw_rn = await fetch_all_node_types(environment, api_key, skip_tls_verify)
+    fetched, raw_rn = await fetch_all_node_types(environment, api_key, approvals)
 
     # Compute exclusive IP lists
     exclusive_swg     = subtract_ips(fetched.get("swg", []),     fetched.get("swg_lb", []))
@@ -286,8 +286,8 @@ async def build_batch_response(
             exclusive_results[nt] = fetched.get(nt, [])
 
     # Fetch composite types directly for validation
-    raw_all          = await fetch_prisma_ips(environment, "all",          api_key, skip_tls_verify=skip_tls_verify)
-    raw_all_deployed = await fetch_prisma_ips(environment, "all_deployed", api_key, skip_tls_verify=skip_tls_verify)
+    raw_all          = await fetch_prisma_ips(environment, "all",          api_key, approvals=approvals)
+    raw_all_deployed = await fetch_prisma_ips(environment, "all_deployed", api_key, approvals=approvals)
     direct_all          = process_api_response(raw_all,          environment, "all")
     direct_all_deployed = process_api_response(raw_all_deployed, environment, "all_deployed")
 

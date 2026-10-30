@@ -17,7 +17,6 @@ router = APIRouter(prefix="/api/locations", tags=["locations"])
 @router.get("")
 async def get_locations(
     authorization: str = Header(..., alias="Authorization"),
-    skip_tls_verify: bool = False,
 ) -> list[dict]:
     """
     Fetch all Prisma Access locations.
@@ -28,4 +27,4 @@ async def get_locations(
     token = authorization[7:].strip()
     if not _VALID_TOKEN.match(token):
         raise HTTPException(status_code=401, detail="Invalid bearer token format")
-    return await fetch_locations(token, skip_tls_verify)
+    return await fetch_locations(token)
