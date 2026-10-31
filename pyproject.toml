@@ -1,6 +1,6 @@
 [project]
 name = "prisma-access-egress-ips"
-version = "0.1.1"
+version = "1.0.0"
 description = "Web utility for querying Prisma Access egress IPs"
 # Pinned to the minor shipped by the distroless runtime image (python3-debian13).
 requires-python = ">=3.13"
