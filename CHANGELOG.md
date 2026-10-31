@@ -8,8 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **FedRAMP High** environment (`fedramp_high`, `api.highprod.prismasasegov.com`).
+- The environment list groups environments under **Commercial** and **FedRAMP**. The page and
+  server messages show the FedRAMP environments as "FedRAMP Moderate" and "FedRAMP High".
 - A `:dev` image tag for pre-release builds that maintainers publish for testing. Builds
   published this way also get a `:sha-<commit>` tag. Not for production use.
+
+### Changed
+
+- FedRAMP environments are no longer searched when a key is rejected, and keys never cross
+  between commercial and FedRAMP. Previously, a FedRAMP key used with a commercial environment
+  selected was switched to `fedramp` automatically; it's now rejected, with a message to select
+  the FedRAMP environment. A key rejected by a FedRAMP environment is reported as is, without
+  trying other environments.
 
 ## [1.0.0] - 2026-10-30
 

@@ -2,18 +2,24 @@
 
 ## Environments
 
-| Key | Endpoint |
-| --- | -------- |
-| `prod1` | `api.prod.datapath.prismaaccess.com` |
-| `prod4` | `api.prod4.datapath.prismaaccess.com` |
-| `prod6` | `api.prod6.datapath.prismaaccess.com` |
-| `prod8` | `api.prod8.datapath.prismaaccess.com` |
-| `fedramp` | `api.fed.prismaaccess.com` |
-| `lab` | `api.lab.datapath.prismaaccess.com` |
+| Key | Shown as | Group | Endpoint |
+| --- | -------- | ----- | -------- |
+| `prod1` | prod1 | Commercial | `api.prod.datapath.prismaaccess.com` |
+| `prod4` | prod4 | Commercial | `api.prod4.datapath.prismaaccess.com` |
+| `prod6` | prod6 | Commercial | `api.prod6.datapath.prismaaccess.com` |
+| `prod8` | prod8 | Commercial | `api.prod8.datapath.prismaaccess.com` |
+| `lab` | lab | Commercial | `api.lab.datapath.prismaaccess.com` |
+| `fedramp` | FedRAMP Moderate | FedRAMP | `api.fed.prismaaccess.com` |
+| `fedramp_high` | FedRAMP High | FedRAMP | `api.highprod.prismasasegov.com` |
 
-If an environment rejects your API key, the tool tries the others in parallel and switches to the
-one that accepts it. Environments it can't reach because of a certificate problem are listed
-above the form; see [Trusting a custom CA](./custom-ca.md).
+If a commercial environment rejects your API key, the tool tries the other commercial
+environments in parallel and switches to the one that accepts it. Environments it can't reach
+because of a certificate problem are listed above the form; see
+[Trusting a custom CA](./custom-ca.md).
+
+FedRAMP environments are never searched, and keys never cross between commercial and FedRAMP
+in either direction. If a FedRAMP environment rejects your key, the rejection is shown as is.
+If no commercial environment accepts a FedRAMP key, select the FedRAMP environment yourself.
 
 ## Node types
 

@@ -6,15 +6,31 @@ The old CLI used mixed hyphens/underscores (e.g. gw-pre, rn_all) — all normali
 """
 
 API_URLS: dict[str, str] = {
-    "fedramp": "https://api.fed.prismaaccess.com/getPrismaAccessIP/v2",
-    "lab":     "https://api.lab.datapath.prismaaccess.com/getPrismaAccessIP/v2",
-    "prod1":   "https://api.prod.datapath.prismaaccess.com/getPrismaAccessIP/v2",
-    "prod4":   "https://api.prod4.datapath.prismaaccess.com/getPrismaAccessIP/v2",
-    "prod6":   "https://api.prod6.datapath.prismaaccess.com/getPrismaAccessIP/v2",
-    "prod8":   "https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "lab":          "https://api.lab.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "prod1":        "https://api.prod.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "prod4":        "https://api.prod4.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "prod6":        "https://api.prod6.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "prod8":        "https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2",
+    "fedramp":      "https://api.fed.prismaaccess.com/getPrismaAccessIP/v2",
+    "fedramp_high": "https://api.highprod.prismasasegov.com/getPrismaAccessIP/v2",
 }
 
 ENVIRONMENTS = list(API_URLS.keys())
+
+# FedRAMP environments are never probed during key auto-detection: keys don't cross the
+# commercial/FedRAMP boundary in either direction.
+FEDRAMP_ENVIRONMENTS = frozenset({"fedramp", "fedramp_high"})
+COMMERCIAL_ENVIRONMENTS = [e for e in ENVIRONMENTS if e not in FEDRAMP_ENVIRONMENTS]
+
+# Names shown to users. Environments not listed here display as their key.
+ENVIRONMENT_NAMES: dict[str, str] = {
+    "fedramp":      "FedRAMP Moderate",
+    "fedramp_high": "FedRAMP High",
+}
+
+
+def display_name(environment: str) -> str:
+    return ENVIRONMENT_NAMES.get(environment, environment)
 
 # --- Locations / SASE Config API ---
 LOCATIONS_API_URL = "https://api.sase.paloaltonetworks.com/sse/config/v1/locations"

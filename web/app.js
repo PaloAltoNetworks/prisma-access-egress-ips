@@ -261,7 +261,7 @@ function renderSingle(res) {
   const zoneCount = res.data.filter(z => z.addresses.length > 0).length;
 
   document.getElementById('resultsTitle').textContent =
-    `${res.node_type} · ${res.environment} · ${ipCount} IP${ipCount !== 1 ? 's' : ''} · ${zoneCount} zone${zoneCount !== 1 ? 's' : ''}`;
+    `${res.node_type} · ${environmentName(res.environment)} · ${ipCount} IP${ipCount !== 1 ? 's' : ''} · ${zoneCount} zone${zoneCount !== 1 ? 's' : ''}`;
 
   if (isRN && res.rn_site_details?.length) {
     renderRNTable(res.rn_site_details);
@@ -279,7 +279,7 @@ function renderPreAllocate(res) {
   const zoneCount = res.data.filter(z => z.addresses.length > 0).length;
 
   document.getElementById('resultsTitle').textContent =
-    `gw_pre (pre-allocate) · ${res.environment} · ${res.location} · ${ipCount} IP${ipCount !== 1 ? 's' : ''} · ${zoneCount} zone${zoneCount !== 1 ? 's' : ''}`;
+    `gw_pre (pre-allocate) · ${environmentName(res.environment)} · ${res.location} · ${ipCount} IP${ipCount !== 1 ? 's' : ''} · ${zoneCount} zone${zoneCount !== 1 ? 's' : ''}`;
 
   renderIPTable(res.data, 'gw_pre');
   show('nodeTabs', false);
@@ -315,7 +315,7 @@ function renderBatch(res) {
   const totalIPs = allZones.reduce((n, z) => n + z.addresses.length, 0);
   const totalZones = allZones.filter(z => z.addresses.length > 0).length;
   document.getElementById('resultsTitle').textContent =
-    `Batch · ${res.environment} · ${totalIPs} total IPs · ${totalZones} zones`;
+    `Batch · ${environmentName(res.environment)} · ${totalIPs} total IPs · ${totalZones} zones`;
 
   selectBatchTab(firstKey, res);
   show('resultsSection', true);
@@ -557,11 +557,17 @@ function csvCell(val) {
 }
 
 // ── Environment auto-correct ───────────────────────────────────────────
+// The option's label, e.g. "FedRAMP High" rather than the internal key
+function environmentName(key) {
+  const option = [...document.getElementById('environment').options].find(o => o.value === key);
+  return option ? option.text : key;
+}
+
 function checkEnvironmentUpdate(res) {
   const select = document.getElementById('environment');
   if (res.environment && res.environment !== select.value) {
     select.value = res.environment;
-    flashMsg(`Environment auto-corrected to ${res.environment}`);
+    flashMsg(`Environment auto-corrected to ${environmentName(res.environment)}`);
   }
 }
 

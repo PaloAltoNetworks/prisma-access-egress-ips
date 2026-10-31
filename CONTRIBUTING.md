@@ -9,8 +9,9 @@ Browser (static frontend, web/)
   │  API key or SASE client credentials, per request
   ▼
 FastAPI worker (app/, Python + httpx)
-  ├─ POST /api/ips/*        → POST https://api.{env}.datapath.prismaaccess.com/getPrismaAccessIP/v2
-  │                           (on 401, probes the other environments in parallel)
+  ├─ POST /api/ips/*        → POST the selected environment's endpoint (API_URLS in app/config.py)
+  │                           (on 401 from a commercial environment, probes the other commercial
+  │                           environments in parallel; FedRAMP environments are never probed)
   ├─ POST /api/auth/token   → POST https://auth.apps.paloaltonetworks.com/oauth2/access_token
   └─ GET  /api/locations    → GET  https://api.sase.paloaltonetworks.com/sse/config/v1/locations
 ```
