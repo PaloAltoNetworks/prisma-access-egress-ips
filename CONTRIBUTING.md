@@ -150,6 +150,9 @@ Both compose files run the container read-only with a `/tmp` tmpfs, all capabili
 | Push to `main` | `:main`, `:sha-<short>` |
 | Tag `vX.Y.Z` | `:X.Y.Z`, `:X.Y`, `:X` if it's the highest release in `X`, and `:latest` if it's the highest release |
 | Weekly schedule | newest release rebuilt on fresh base images, same release tags (`:main` and `:sha-…` untouched) |
+| Manual run on a branch | `:dev`, `:sha-<short>` of the branch head |
+
+**To hand a branch to a tester**, a maintainer runs `gh workflow run ci.yml --ref <branch>` (or **Run workflow** on the CI workflow's Actions page). It runs the tests, then publishes the branch as `:dev` and `:sha-<short>`. `:dev` is whichever branch was published last, so give testers the `:sha-…` tag when more than one branch is under test. Running it on `main` is refused, because `main` is already published as `:main`.
 
 Versions follow [SemVer](https://semver.org). The supported interface is the web page and the compose files: MAJOR when users have to change something there, MINOR for features, PATCH for fixes. The internal `/api/...` endpoints aren't part of it. `pyproject.toml` is the only version source; the app reads it from package metadata.
 

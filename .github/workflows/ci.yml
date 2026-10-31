@@ -6,6 +6,7 @@ name: CI
 #   push to main     :main, :sha-<commit>, then tag the release if the version is new
 #   v* tag           :X.Y.Z, :X.Y, :X (only for the highest release in X), :latest (only for
 #                    the highest release)
+#   dispatch, branch :dev, :sha-<commit> for a maintainer to hand a build to a tester
 #   weekly schedule  rebuild the newest release on fresh base images, same release tags
 
 on:
@@ -15,7 +16,8 @@ on:
   pull_request:
     branches: [main]
   # Release builds arrive here: tags created with GITHUB_TOKEN don't fire push events,
-  # so tag-release dispatches this workflow on the new tag.
+  # so tag-release dispatches this workflow on the new tag. A maintainer dispatching it on a
+  # branch publishes a test build.
   workflow_dispatch:
   schedule:
     - cron: '17 4 * * 1'
@@ -34,6 +36,7 @@ jobs:
       major-latest: ${{ steps.target.outputs.major_latest }}
       minor-latest: ${{ steps.target.outputs.minor_latest }}
       build: ${{ steps.target.outputs.build }}
+      dev: ${{ steps.target.outputs.dev }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,7 +60,7 @@ jobs:
               | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | head -n1 || true
           }
           highest=$(highest_tag 'v[0-9]*.[0-9]*.[0-9]*')
-          ref="$GITHUB_SHA" release="" latest=false major_latest=false minor_latest=false build=false
+          ref="$GITHUB_SHA" release="" latest=false major_latest=false minor_latest=false build=false dev=false
 
           if [ "$REF_TYPE" = tag ]; then
             if [[ ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -74,8 +77,11 @@ jobs:
                 if [ "$REF" = refs/heads/main ]; then build=true; fi
                 ;;
               workflow_dispatch)
-                echo "::error::Dispatch this workflow on a v* release tag, not a branch"
-                exit 1
+                if [ "$REF" = refs/heads/main ]; then
+                  echo "::error::main is published as :main on every push; dispatch on a feature branch or a v* tag"
+                  exit 1
+                fi
+                build=true dev=true
                 ;;
               schedule)
                 if [ -z "$highest" ]; then
@@ -115,6 +121,7 @@ jobs:
             echo "major_latest=$major_latest"
             echo "minor_latest=$minor_latest"
             echo "build=$build"
+            echo "dev=$dev"
           } >> "$GITHUB_OUTPUT"
 
   version-check:
@@ -184,6 +191,10 @@ jobs:
     needs: [resolve, test]
     if: needs.resolve.outputs.build == 'true'
     runs-on: ubuntu-latest
+    # :dev publishes run one at a time, so :dev ends on the branch dispatched last
+    concurrency:
+      group: ${{ needs.resolve.outputs.dev == 'true' && 'dev-image' || format('build-{0}', github.run_id) }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
@@ -220,10 +231,12 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           flavor: latest=false
           # :main and :sha only for pushes: the weekly rebuild also runs as refs/heads/main but
-          # builds the newest release tag, which mustn't overwrite them.
+          # builds the newest release tag, which mustn't overwrite them. A branch dispatch gets
+          # :dev and :sha of the branch head.
           tags: |
             type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=sha,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=dev,enable=${{ needs.resolve.outputs.dev == 'true' }}
+            type=sha,enable=${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || needs.resolve.outputs.dev == 'true' }}
             type=semver,pattern={{version}},value=${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE }},enable=${{ needs.resolve.outputs.minor-latest == 'true' }}
             type=semver,pattern={{major}},value=${{ env.RELEASE }},enable=${{ needs.resolve.outputs.major-latest == 'true' }}
