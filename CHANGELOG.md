@@ -11,6 +11,8 @@ All notable changes to this project are documented here. The format follows
 - **FedRAMP High** environment (`fedramp_high`, `api.highprod.prismasasegov.com`).
 - The environment list groups environments under **Commercial** and **FedRAMP**. The page and
   server messages show the FedRAMP environments as "FedRAMP Moderate" and "FedRAMP High".
+- A `:dev` image tag for pre-release builds that maintainers publish for testing. Builds
+  published this way also get a `:sha-<commit>` tag. Not for production use.
 
 ### Changed
 
