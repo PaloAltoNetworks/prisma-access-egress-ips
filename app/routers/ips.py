@@ -7,6 +7,7 @@ POST /api/ips/pre-allocate — pre-allocate Mobile User IPs for a location
 """
 
 from fastapi import APIRouter, HTTPException
+from app.config import FEDRAMP_ENVIRONMENTS
 from app.models import (
     BatchQueryRequest,
     BatchQueryResponse,
@@ -20,6 +21,7 @@ from app.services.prisma_client import (
     fetch_prisma_ips,
     find_working_environment,
     key_rejected,
+    key_rejected_by,
     probe_environment,
 )
 from app.services.ip_processor import (
@@ -40,7 +42,8 @@ async def query_node_type(req: IPQueryRequest) -> IPQueryResponse:
     try:
         raw = await fetch_prisma_ips(env, req.node_type, req.api_key, approvals=approvals)
     except HTTPException as exc:
-        if exc.status_code != 401:
+        # A FedRAMP key never belongs to another environment, so there's nothing to search
+        if exc.status_code != 401 or env in FEDRAMP_ENVIRONMENTS:
             raise
         env, tls_failures, unknown = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
@@ -77,6 +80,8 @@ async def query_batch(req: BatchQueryRequest) -> BatchQueryResponse:
     # Probe with a single request before fanning out — avoids sending every batch
     # request to the wrong environment when the API key belongs to a different one.
     if await probe_environment(env, req.api_key, approvals) is False:
+        if env in FEDRAMP_ENVIRONMENTS:
+            raise key_rejected_by(env)
         env, tls_failures, unknown = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:
             raise key_rejected(tls_failures, unknown)
@@ -109,7 +114,8 @@ async def pre_allocate(req: PreAllocateRequest) -> PreAllocateResponse:
     try:
         raw = await fetch_prisma_ips(env, "gw", req.api_key, override_payload=payload, approvals=approvals)
     except HTTPException as exc:
-        if exc.status_code != 401:
+        # A FedRAMP key never belongs to another environment, so there's nothing to search
+        if exc.status_code != 401 or env in FEDRAMP_ENVIRONMENTS:
             raise
         env, tls_failures, unknown = await find_working_environment(req.api_key, exclude=req.environment, approvals=approvals)
         if env is None:

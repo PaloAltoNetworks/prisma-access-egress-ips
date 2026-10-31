@@ -59,7 +59,8 @@ firewall or proxy:
 | Host | Used for |
 | ---- | -------- |
 | `api.prod.datapath.prismaaccess.com`, `api.prod4.…`, `api.prod6.…`, `api.prod8.…`, `api.lab.datapath.prismaaccess.com` | Egress IP API, by environment |
-| `api.fed.prismaaccess.com` | Egress IP API, FedRAMP |
+| `api.fed.prismaaccess.com` | Egress IP API, FedRAMP Moderate |
+| `api.highprod.prismasasegov.com` | Egress IP API, FedRAMP High |
 | `api.sase.paloaltonetworks.com` | Prisma Access locations (not used by the web page yet) |
 | `auth.apps.paloaltonetworks.com` | OAuth tokens for the locations API (not used by the web page yet) |
 

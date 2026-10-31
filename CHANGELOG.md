@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **FedRAMP High** environment (`fedramp_high`, `api.highprod.prismasasegov.com`).
+- The environment list groups environments under **Commercial** and **FedRAMP**. The page and
+  server messages show the FedRAMP environments as "FedRAMP Moderate" and "FedRAMP High".
+
+### Changed
+
+- FedRAMP environments are no longer searched when a key is rejected, and keys never cross
+  between commercial and FedRAMP. Previously, a FedRAMP key used with a commercial environment
+  selected was switched to `fedramp` automatically; it's now rejected, with a message to select
+  the FedRAMP environment. A key rejected by a FedRAMP environment is reported as is, without
+  trying other environments.
+
 ## [1.0.0] - 2026-10-30
 
 First stable release. The web page and the compose files are the supported interface: a

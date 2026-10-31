@@ -154,7 +154,7 @@ def test_cert_failure_on_one_environment_does_not_hide_a_match(upstream):
 
     def handler(request):
         host = request.url.host
-        if host == "api.fed.prismaaccess.com":
+        if host == "api.lab.datapath.prismaaccess.com":
             return _cert_failure(request)
         if host == "api.prod4.datapath.prismaaccess.com":
             return httpx.Response(200, json={"status": "success", "result": []})
@@ -166,14 +166,14 @@ def test_cert_failure_on_one_environment_does_not_hide_a_match(upstream):
     assert resp.status_code == 200
     body = resp.json()
     assert body["environment"] == "prod4"
-    assert [f["host"] for f in body["tls_failures"]] == ["api.fed.prismaaccess.com"]
+    assert [f["host"] for f in body["tls_failures"]] == ["api.lab.datapath.prismaaccess.com"]
 
 
 def test_rejected_key_lists_environments_that_could_not_be_checked(upstream):
     state, _ = upstream
 
     def handler(request):
-        if request.url.host == "api.fed.prismaaccess.com":
+        if request.url.host == "api.lab.datapath.prismaaccess.com":
             return _cert_failure(request)
         return httpx.Response(401, json={"status": "error", "result": "Invalid API key"})
 
@@ -183,7 +183,7 @@ def test_rejected_key_lists_environments_that_could_not_be_checked(upstream):
     assert resp.status_code == 401
     detail = resp.json()["detail"]
     assert detail["code"] == "key_rejected"
-    assert [f["host"] for f in detail["tls_failures"]] == ["api.fed.prismaaccess.com"]
+    assert [f["host"] for f in detail["tls_failures"]] == ["api.lab.datapath.prismaaccess.com"]
 
 
 def test_cert_failure_everywhere_opens_the_dialog(upstream):
@@ -208,4 +208,4 @@ def test_plain_rejection_keeps_string_detail(upstream):
     resp = client.post("/api/ips/query", json=QUERY)
 
     assert resp.status_code == 401
-    assert resp.json()["detail"] == "API key was rejected by all environments."
+    assert resp.json()["detail"].startswith("API key was rejected by every commercial environment.")
