@@ -138,7 +138,7 @@ All base images are pinned by digest and bumped together by Dependabot. [docs/de
 
 The image has no shell. To inspect a running container, use its Python: `docker exec <id> /app/.venv/bin/python -c "..."`.
 
-Both compose files run the container read-only with a `/tmp` tmpfs, all capabilities dropped and `no-new-privileges`. Keep the app compatible with that: don't write outside `/tmp`.
+Every compose file runs the container read-only with a `/tmp` tmpfs, all capabilities dropped and `no-new-privileges`. Keep the app compatible with that: don't write outside `/tmp`.
 
 ## CI and Releases
 
