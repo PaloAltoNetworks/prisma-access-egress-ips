@@ -15,6 +15,7 @@ Images are published to the GitHub Container Registry for `linux/amd64` and `lin
 | `:1.0` | Newest `1.0.x` patch release |
 | `:1.0.0` | One exact release |
 | `:main` | Unreleased `main` branch, for testing only |
+| `:dev` | A pre-release build a maintainer published for testing; changes without notice |
 
 A new major version (`2.0.0`) is only released for changes you have to act on, such as a
 change to the compose file. `:latest` moves to it; `:1` doesn't.
