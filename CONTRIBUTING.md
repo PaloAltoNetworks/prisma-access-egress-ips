@@ -43,6 +43,7 @@ These are the maintainers' engineering standards for this repository. Read them 
 ├── .dockerignore             # Allowlist of what reaches the build context
 ├── compose.yml               # Pre-built image compose file (end users)
 ├── compose.build.yml         # Build-from-source compose file
+├── compose.dev.yml           # :dev test build compose file (testers)
 ├── pyproject.toml            # Version source and dependency ranges
 ├── uv.lock                   # Locked dependency set used by CI and the image
 ├── .python-version           # Python minor for local dev and CI (matches the image)
@@ -137,7 +138,7 @@ All base images are pinned by digest and bumped together by Dependabot. [docs/de
 
 The image has no shell. To inspect a running container, use its Python: `docker exec <id> /app/.venv/bin/python -c "..."`.
 
-Both compose files run the container read-only with a `/tmp` tmpfs, all capabilities dropped and `no-new-privileges`. Keep the app compatible with that: don't write outside `/tmp`.
+Every compose file runs the container read-only with a `/tmp` tmpfs, all capabilities dropped and `no-new-privileges`. Keep the app compatible with that: don't write outside `/tmp`.
 
 ## CI and Releases
 
@@ -152,7 +153,7 @@ Both compose files run the container read-only with a `/tmp` tmpfs, all capabili
 | Weekly schedule | newest release rebuilt on fresh base images, same release tags (`:main` and `:sha-…` untouched) |
 | Manual run on a branch | `:dev`, `:sha-<short>` of the branch head |
 
-**To hand a branch to a tester**, a maintainer runs `gh workflow run ci.yml --ref <branch>` (or **Run workflow** on the CI workflow's Actions page). It runs the tests, then publishes the branch as `:dev` and `:sha-<short>`. `:dev` is whichever branch was published last, so give testers the `:sha-…` tag when more than one branch is under test. Running it on `main` is refused, because `main` is already published as `:main`.
+**To hand a branch to a tester**, a maintainer runs `gh workflow run ci.yml --ref <branch>` (or **Run workflow** on the CI workflow's Actions page). It runs the tests, then publishes the branch as `:dev` and `:sha-<short>`. Testers download `compose.dev.yml` from `main` and run `docker compose -f compose.dev.yml up -d`. `:dev` is whichever branch was published last, so when more than one branch is under test, give testers the `:sha-…` tag to put in that file instead. Running it on `main` is refused, because `main` is already published as `:main`.
 
 Versions follow [SemVer](https://semver.org). The supported interface is the web page and the compose files: MAJOR when users have to change something there, MINOR for features, PATCH for fixes. The internal `/api/...` endpoints aren't part of it. `pyproject.toml` is the only version source; the app reads it from package metadata.
 

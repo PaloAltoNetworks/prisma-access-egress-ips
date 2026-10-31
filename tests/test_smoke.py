@@ -49,6 +49,17 @@ def test_invalid_request_rejected_before_upstream_call():
     assert resp.status_code == 422
 
 
+def test_dev_compose_matches_the_release_compose():
+    # compose.dev.yml is compose.yml on the :dev tag, so testers run what users will run.
+    root = Path(__file__).parent.parent
+
+    def services(name: str) -> str:
+        text = (root / name).read_text()
+        return text[text.index("services:"):]
+
+    assert services("compose.dev.yml") == services("compose.yml").replace(":latest\n", ":dev\n")
+
+
 def test_api_docs_and_schema_are_not_published():
     for path in ("/api/docs", "/api/redoc", "/api/openapi.json"):
         assert client.get(path).status_code == 404

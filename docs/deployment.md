@@ -15,7 +15,7 @@ Images are published to the GitHub Container Registry for `linux/amd64` and `lin
 | `:1.0` | Newest `1.0.x` patch release |
 | `:1.0.0` | One exact release |
 | `:main` | Unreleased `main` branch, for testing only |
-| `:dev` | A pre-release build a maintainer published for testing; changes without notice. Each such build also has a `:sha-<commit>` tag that doesn't move |
+| `:dev` | A pre-release build a maintainer published for testing; changes without notice. Each such build also has a `:sha-<commit>` tag that doesn't move. `compose.dev.yml` runs it |
 
 A new major version (`2.0.0`) is only released for changes you have to act on, such as a
 change to the compose file. `:latest` moves to it; `:1` doesn't.
@@ -108,6 +108,6 @@ docker compose -f compose.build.yml up --build -d
 
 - Distroless Python image running as a non-root user (UID 65532), with no shell.
 - Read-only filesystem with a temporary `/tmp`, all Linux capabilities dropped and
-  `no-new-privileges` (set in both compose files).
+  `no-new-privileges` (set in every compose file).
 - A health check on `/health`; `docker compose ps` shows its status. `/health` also
   reports the running version, which the page footer shows.
