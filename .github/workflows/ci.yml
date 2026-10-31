@@ -191,6 +191,10 @@ jobs:
     needs: [resolve, test]
     if: needs.resolve.outputs.build == 'true'
     runs-on: ubuntu-latest
+    # :dev publishes run one at a time, so :dev ends on the branch dispatched last
+    concurrency:
+      group: ${{ needs.resolve.outputs.dev == 'true' && 'dev-image' || format('build-{0}', github.run_id) }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
