@@ -91,6 +91,28 @@ def test_unchecked_environments_message_keeps_the_fedramp_hint(upstream):
     assert not re.search(r"\bfedramp", detail)
 
 
+def test_fedramp_high_query_uses_its_endpoint(upstream):
+    state, _ = upstream
+    ok = httpx.Response(200, json={"status": "success", "result": [{"zone": "US East", "addresses": ["1.1.1.1"]}]})
+    hosts = _recording(state, lambda request: ok)
+
+    resp = client.post("/api/ips/query", json={"api_key": API_KEY, "environment": "fedramp_high", "node_type": "gw"})
+
+    assert resp.status_code == 200
+    assert resp.json()["environment"] == "fedramp_high"
+    assert hosts == ["api.highprod.prismasasegov.com"]
+
+
+def test_unknown_environment_rejected(upstream):
+    state, _ = upstream
+    hosts = _recording(state, lambda request: REJECTED)
+
+    resp = client.post("/api/ips/batch", json={"api_key": API_KEY, "environment": "fedramp-high"})
+
+    assert resp.status_code == 422
+    assert hosts == []
+
+
 def test_display_names():
     assert display_name("fedramp") == "FedRAMP Moderate"
     assert display_name("fedramp_high") == "FedRAMP High"
