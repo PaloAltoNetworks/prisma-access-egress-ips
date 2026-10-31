@@ -1,0 +1,27 @@
+# Pre-release test build a maintainer published from a branch. Not for production use.
+#
+#   curl -fsSLO https://raw.githubusercontent.com/PaloAltoNetworks/prisma-access-egress-ips/main/compose.dev.yml
+#   docker compose -f compose.dev.yml up -d
+#
+# Open http://localhost:8000 once the container starts. :dev moves whenever a maintainer
+# publishes another branch; pull_policy: always fetches the current one on each `up`.
+# When you're done: docker compose -f compose.dev.yml down
+
+services:
+  app:
+    image: ghcr.io/paloaltonetworks/prisma-access-egress-ips:dev
+    # Only this machine can reach it; see docs/deployment.md before exposing it further
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    pull_policy: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Behind SSL decryption, mount your organization's CA certificate(s); see docs/custom-ca.md
+    # volumes:
+    #   - ./certs:/certs:ro

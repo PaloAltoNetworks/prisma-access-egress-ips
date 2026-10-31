@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - A `:dev` image tag for pre-release builds that maintainers publish for testing. Builds
-  published this way also get a `:sha-<commit>` tag. Not for production use.
+  published this way also get a `:sha-<commit>` tag, and `compose.dev.yml` runs `:dev`. Not
+  for production use.
 
 ## [1.0.0] - 2026-10-30
 
