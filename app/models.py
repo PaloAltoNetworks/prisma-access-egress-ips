@@ -65,7 +65,7 @@ class OutboundRequest(_Strict):
 
 
 class EnvironmentMixin(OutboundRequest):
-    environment: Literal["fedramp", "lab", "prod1", "prod4", "prod6", "prod8"]
+    environment: Literal[*ENVIRONMENTS]
 
 
 # --- IP query requests ---

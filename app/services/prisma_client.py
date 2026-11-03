@@ -18,11 +18,12 @@ from fastapi import HTTPException
 from app.config import (
     API_TIMEOUT_SECONDS,
     API_URLS,
-    ENVIRONMENTS,
+    COMMERCIAL_ENVIRONMENTS,
     LOCATIONS_API_URL,
     MIN_REQUEST_INTERVAL,
     NODE_PAYLOADS,
     OAUTH_TOKEN_URL,
+    display_name,
 )
 from app.models import CertificateApproval
 from app.services.tls import TLS_VERIFY_FAILED, cert_verification_error, context_for, verification_failed
@@ -154,14 +155,7 @@ async def fetch_prisma_ips(
         logger.error("HTTP %s from Prisma API (%s/%s): %s", status, environment, node_type, api_body)
 
         if status == 401:
-            raise HTTPException(
-                status_code=401,
-                detail=(
-                    f"Authentication failed — your API key was rejected by the '{environment}' environment. "
-                    f"Verify you have selected the correct environment for this key. "
-                    f"API response: {api_body}"
-                ),
-            )
+            raise key_rejected_by(environment, api_body)
         raise HTTPException(
             status_code=status if 400 <= status < 500 else 502,
             detail=f"Prisma Access API returned {status}: {api_body}",
@@ -252,14 +246,15 @@ async def find_working_environment(
     api_key: str, exclude: Optional[str] = None, approvals: Approvals = ()
 ) -> tuple[Optional[str], list[dict[str, Any]], list[str]]:
     """
-    Probe all environments (except `exclude`) in parallel.
+    Probe the commercial environments (except `exclude`) in parallel. FedRAMP environments
+    are never probed, and callers don't search at all when a FedRAMP environment was selected.
 
     Returns the first environment that accepts the API key (or None), the certificate
     failures seen along the way so the UI can list them without blocking the query, and the
     environments whose answer was unknown (unreachable or an unexpected status). Only when
     every probe fails on its certificate is the failure raised for the user to decide.
     """
-    envs = [e for e in ENVIRONMENTS if e != exclude]
+    envs = [e for e in COMMERCIAL_ENVIRONMENTS if e != exclude]
     results = await asyncio.gather(
         *[probe_environment(e, api_key, approvals) for e in envs], return_exceptions=True
     )
@@ -279,19 +274,38 @@ async def find_working_environment(
     return None, tls_failures, unknown
 
 
+_FEDRAMP_HINT = (
+    " FedRAMP environments aren't searched. If this is a FedRAMP key, select the FedRAMP environment."
+)
+
+
+def key_rejected_by(environment: str, api_body: Any = None) -> HTTPException:
+    """401 for a key the selected environment rejected."""
+    detail = (
+        f"Authentication failed — your API key was rejected by the {display_name(environment)} environment. "
+        "Verify you have selected the correct environment for this key."
+    )
+    if api_body is not None:
+        detail += f" API response: {api_body}"
+    return HTTPException(status_code=401, detail=detail)
+
+
 def key_rejected(tls_failures: list[dict[str, Any]], unknown: list[str] = ()) -> HTTPException:
     """
-    For a key no environment accepted. If some couldn't be checked, the key may still belong
-    to one of them, so that's a 502 naming them rather than a 401.
+    For a key no commercial environment accepted. If some couldn't be checked, the key may
+    still belong to one of them, so that's a 502 naming them rather than a 401.
     """
     if not tls_failures and not unknown:
-        return HTTPException(status_code=401, detail="API key was rejected by all environments.")
-    message = "API key was rejected by every environment that could be checked."
+        return HTTPException(
+            status_code=401, detail="API key was rejected by every commercial environment." + _FEDRAMP_HINT
+        )
+    message = "API key was rejected by every commercial environment that could be checked."
     if unknown:
         message += (
-            f" Couldn't check {', '.join(unknown)} (unreachable or returned an error);"
+            f" Couldn't check {', '.join(display_name(e) for e in unknown)} (unreachable or returned an error);"
             " the key may belong to one of them, so try again later."
         )
+    message += _FEDRAMP_HINT
     status = 502 if unknown else 401
     if not tls_failures:
         return HTTPException(status_code=status, detail=message)

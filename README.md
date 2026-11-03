@@ -31,7 +31,7 @@ You need an **Egress IP API key** from your Prisma Access tenant:
 ## Using the Tool
 
 1. Paste your API key into the **API Key** field.
-2. Pick your **environment**. If you're not sure, pick any: when the key is rejected, the tool tries the other environments and switches to the one that accepts it.
+2. Pick your **environment**. For a commercial tenant, if you're not sure, pick any commercial environment: when the key is rejected, the tool tries the other commercial environments and switches to the one that accepts it. For a FedRAMP tenant, select **FedRAMP Moderate** or **FedRAMP High**: FedRAMP environments are never searched.
 3. Choose **Single** to query one node type, or **Batch (all)** to query every node type at once.
 4. In Single mode, pick a **node type**. For `gw_pre`, you can enter a location to pre-allocate Mobile User IPs there.
 5. Click **Query**, then copy the IPs or download them as CSV, JSON or TXT.
@@ -41,7 +41,7 @@ Environments and node types are described in the [Reference](./docs/reference.md
 ## Troubleshooting
 
 **401 Unauthorized on every environment**
-Your API key may be expired or invalid. Regenerate it from the Egress IP API page in Panorama or Strata Cloud Manager.
+If this is a FedRAMP key, select the FedRAMP environment: FedRAMP environments aren't searched. Otherwise your API key may be expired or invalid. Regenerate it from the Egress IP API page in Panorama or Strata Cloud Manager.
 
 **The page won't load**
 Check that nothing else is using port 8000, or [change the port](./docs/deployment.md#changing-the-port).

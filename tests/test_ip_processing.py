@@ -273,8 +273,8 @@ def test_rejection_with_unchecked_environments_is_not_a_plain_rejection(upstream
 
     assert resp.status_code == 502
     detail = resp.json()["detail"]
-    assert detail.startswith("API key was rejected by every environment that could be checked.")
-    assert "fedramp" in detail and "prod8" in detail
+    assert detail.startswith("API key was rejected by every commercial environment that could be checked.")
+    assert "prod4" in detail and "prod8" in detail
 
 
 # --- Retry ---
