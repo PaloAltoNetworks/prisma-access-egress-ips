@@ -10,7 +10,7 @@
 | `prod8` | prod8 | Commercial | `api.prod8.datapath.prismaaccess.com` |
 | `lab` | lab | Commercial | `api.lab.datapath.prismaaccess.com` |
 | `fedramp` | FedRAMP Moderate | FedRAMP | `api.fed.prismaaccess.com` |
-| `fedramp_high` | FedRAMP High | FedRAMP | `api.highprod.prismasasegov.com` |
+| `fedramp_high` | FedRAMP High | FedRAMP | `api.fh-prod2.datapath.prismasasegov.com` |
 
 If a commercial environment rejects your API key, the tool tries the other commercial
 environments in parallel and switches to the one that accepts it. Environments it can't reach

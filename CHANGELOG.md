@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **FedRAMP High** environment (`fedramp_high`, `api.highprod.prismasasegov.com`).
+- **FedRAMP High** environment (`fedramp_high`, `api.fh-prod2.datapath.prismasasegov.com`).
 - The environment list groups environments under **Commercial** and **FedRAMP**. The page and
   server messages show the FedRAMP environments as "FedRAMP Moderate" and "FedRAMP High".
 - A `:dev` image tag for pre-release builds that maintainers publish for testing. Builds

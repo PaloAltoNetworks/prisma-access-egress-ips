@@ -100,7 +100,7 @@ def test_fedramp_high_query_uses_its_endpoint(upstream):
 
     assert resp.status_code == 200
     assert resp.json()["environment"] == "fedramp_high"
-    assert hosts == ["api.highprod.prismasasegov.com"]
+    assert hosts == ["api.fh-prod2.datapath.prismasasegov.com"]
 
 
 def test_unknown_environment_rejected(upstream):
